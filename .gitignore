@@ -1,0 +1,37 @@
+# Python environments and generated packaging files
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Machine configuration and secrets
+config/*.local.toml
+.env
+.env.*
+!.env.example
+credentials*.json
+token*.json
+*.pem
+*.key
+
+# Working church materials belong in Google Drive
+/data/
+/private/
+/outputs/
+/archives/
+/work/
+/logs/
+*.log
+
+# Editor and operating-system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+~$*
