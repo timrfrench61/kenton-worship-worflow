@@ -1,8 +1,0 @@
-# Copy to settings.local.toml and replace these placeholders.
-# Not loaded by the foundation CLI; these are proposed folder roles.
-[paths]
-reference_root = 'C:/REPLACE-ME/GoogleDrive/Kenton/Reference'
-weeks_root = 'C:/REPLACE-ME/GoogleDrive/Kenton/Weeks'
-archive_root = 'C:/REPLACE-ME/GoogleDrive/Kenton/Archive'
-# Must have separate, restricted sharing; never inside public outputs.
-private_root = 'C:/REPLACE-ME/GoogleDrive/Kenton/Private'

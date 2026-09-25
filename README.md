@@ -1,60 +1,20 @@
 # Kenton Worship Workflow
 
-A small Python project for planning, producing, publishing, and archiving Kenton's weekly worship materials.
+Follow [Kenton workflow 001](docs/01-kenton-workflow-001.md). Earlier documentation is in `docs/_archive`.
 
-**GitHub holds the workflow system. Google Drive holds the working church materials.** Python handles repeatable file and state operations. AI/Codex helps draft, reason, and review; people make the final content and publishing decisions.
+Use Python 3.11 or newer. Missing dependencies are installed automatically in the repository's `.automation-venv`, then the original command continues. First-time setup requires internet access; your global Python is unchanged.
 
-## Current status
-
-This is the documentation and project foundation. The Python entry point provides help and version information only. Spreadsheet import, document generation, publishing, and archiving are planned, not implemented.
-
-## Weekly outputs
-
-| Area | Outputs |
-| --- | --- |
-| Morning worship | Bulletin, praise chord packet, word study handout, sermon outline |
-| Evening worship | Bulletin, praise chord packet, word study handout, sermon outline |
-| Prayer and congregational care | Private prayer bulletin and retained prayer reports |
-| Website | Coming this Sunday, Where we've been, approved handouts |
-| Social and broadcast | Public Facebook drafts, private Facebook prayer reports, Facebook Live and YouTube descriptions/links |
-
-## Getting started
-
-Use Python 3.11 or newer. From this folder in a PowerShell terminal:
+Run the three stages:
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e .
-.\.venv\Scripts\python.exe -m kenton_workflow --help
-.\.venv\Scripts\python.exe -m kenton_workflow --version
-Copy-Item config\settings.example.toml config\settings.local.toml
+python scripts/input-automation.py --date 2026-09-27
+python scripts/update-automation.py
+# Review the generated Word documents and PDFs before the next command.
+python scripts/publish-automation.py --reviewed
 ```
 
-Edit the local settings copy to point at the actual Google Drive folders. It is ignored by Git. The starter command does not read these settings or access Drive yet. No Google credentials or cloud connection are needed for the skeleton.
+The date carries forward from input. Add `--check` to update to list missing inputs without building documents. Run `--help` on any script for its options.
 
-If Windows cannot find `python`, install/configure Python or select an existing Python interpreter in VS Code first.
+Working files and the plain-text log are in `work/desktop`. Review copies are in `work/output/<date>/documents`. Published weeks are in `work/week-sets`. Google Drive is read-only. These scripts do not publish to a website or push to GitHub.
 
-## Project layout
-
-```text
-config/                 Safe example settings; ignored local settings
-docs/                   Architecture, weekly workflow, sources, development plan
-src/kenton_workflow/     Small Python package and command entry point
-templates/              Sanitized reusable layouts only
-tests/                  Future behavior tests and synthetic fixtures
-scripts/                Optional developer utilities
-pyproject.toml          Package and command configuration
-```
-
-Actual logs, songbooks, chord files, weekly plans, generated documents, prayer information, and archives live outside this repository in Google Drive. The folder names in the documentation are proposals; existing Drive content need not be moved.
-
-## Read next
-
-1. [Architecture](docs/architecture.md)
-2. [Weekly workflow](docs/workflow.md)
-3. [Data sources](docs/data-sources.md)
-4. [Development plan](docs/development-plan.md)
-
-## Git setup
-
-Git is initialized in this folder. Review the files before the first commit and connect your GitHub repository if a remote is not already configured. Never commit local settings, credentials, or church working materials. No remote URL is assumed by this project.
+The user or agent supplies handout target words, meanings, and discussion questions in the editable content file described in the workflow. Microsoft Word must be installed and able to start in the terminal's Windows session to produce PDFs.
