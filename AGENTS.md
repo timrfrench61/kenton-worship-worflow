@@ -5,7 +5,7 @@
 - Use `scripts/input-automation.py`, `scripts/update-automation.py`, and `scripts/publish-automation.py`.
 - DESKTOP is `work/desktop`. OUTPUT is `work/output`. Keep church content under Git-ignored `work/`.
 - One day at a time: never add date subfolders to DESKTOP or OUTPUT. Input copies the two Drive workbooks into `work/planning`, not DESKTOP. Last week's files come from the Drive `week-sets` folder and go into `work/desktop/previous`; OUTPUT is reserved for generated documents. Input is standalone and must not import `src`.
-- Google Drive and planning workbooks are read-only inputs. Publish only to local `work/week-sets`.
+- Planning workbooks and other Drive source documents are read-only inputs. Publish reviewed output only to `G:\My Drive\kenton\_worship\week-sets\YYYYMMDD`; never use local `work/week-sets` as a publication fallback.
 - Planning workbooks come directly from `G:\My Drive\kenton\_worship`. The user has rejected the files in `work/planning`; never use those as a fallback. Preserve actual source filenames and log complete paths.
 - Use last week's retained Word templates. Change mapped content while preserving layout and standing text. Do not use the retired spacing engine or separately compose bulletin PDFs.
 - Word exports the PDF from the generated DOCX. Never claim an unrendered output has passed visual review.
@@ -13,6 +13,7 @@
 - Use plain-text logs and actionable missing-input messages. Keep the three-stage workflow readable.
 - Praise-song validation ignores trailing parenthesized page references on both names being compared (including `(II4)`). Preserve the complete original titles for printed output and keep meaningful arrangement subtitles.
 - Preserve previous week-sets and reviewed output. Publication requires the user's review indication.
+- Publish `--reviewed --force` may replace the selected Drive week-set after verifying the new files. Preserve the replaced set under Drive `week-sets/_archive` and restore it if the final replacement fails; never bypass review or completed-update checks.
 
 ## Authority and division of work
 
@@ -37,4 +38,11 @@ These are required working practices, not a claim that every check is already au
 
 - Reruns replace existing working copies and generated files. ATTENTION is advisory: never block all of update on an input completion flag or on another document's missing data. Attempt each service/output independently; report outputs that could not be produced without fabricating missing content.
 
-- Map Study-words from the planner. Generate word-study worksheets and standard MOV discussion prompts without demanding target_words or discussion_questions in content.json. That file is optional. Discover actual praise/chord folders under the worship source; do not assume a folder named praise-chords. Report shared source failures once.
+- Map Study-words from the planner. Generate developed teaching handouts following the user's Word-study and MOV examples in the current specification, never generic blank worksheets or stock viewing prompts. Use matching authored DOCX studies or AI/user-authored content mapped into retained Word templates. content.json remains optional when a matching authored study exists; the user need not author JSON. Discover actual praise/chord folders under the worship source; do not assume a folder named praise-chords. Report shared source failures once.
+
+- Word studies must print exact NIV passage and cross-reference text from verified source pages, never paraphrases. Omit Greek/transliterations and legacy Greek definition paragraphs. Do not include commentary.
+- After successful update, verify working/output copies and remove the current `.update-*` staging folder. Preserve failed-run diagnostics under `work/_archive/failed-updates`; never delete reviewed output or archives during cleanup.
+
+- Word studies must fit on one readable page. AI/user may select shorter contiguous exact NIV excerpts with precise references and excerpt labels; Python validates source matches and the Word-exported PDF page count. Keep the main passage complete. Do not automatically shrink fonts, paraphrase, or truncate verses. An oversized word study is an incomplete draft, not publishable output.
+
+- A single-verse word-study reference always prints the complete NIV verse. Do not include introductory commentary, per-word explanations, or a closing synthesis, even when present in retained templates or authored JSON.

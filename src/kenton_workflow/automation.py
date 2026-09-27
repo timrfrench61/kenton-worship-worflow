@@ -21,10 +21,12 @@ from zipfile import ZipFile
 import openpyxl
 
 from kenton_workflow.planner import extract_week, praise_title
+from kenton_workflow import handouts
 from kenton_workflow.sync import checked_path, GOOGLE_NATIVE_EXTENSIONS
 
 ROOT = Path(__file__).resolve().parents[2]
 PLANNING_ROOT = Path(r'G:\My Drive\kenton\_worship')
+PUBLISH_ROOT = Path(r'G:\My Drive\kenton\_worship\week-sets')
 SERVICES = ('morning', 'evening')
 W = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
 NS = {'w': W[1:-1]}
@@ -280,6 +282,73 @@ def bible_reading(reference, cache, offline=False):
     return lines
 
 
+def exact_niv_reading(reference, cache, offline=False):
+    """Read full requested verses from saved/fresh NIV source HTML, never authored text.
+
+    Separate from the bulletin cache: old handout summaries and manually supplied
+    lines cannot be accepted as verified quotations. Re-parse source HTML on reruns.
+    """
+    normalized = reference.replace('–', '-').replace('—', '-')
+    match = re.fullmatch(r'([1-3]?\s*[A-Za-z][A-Za-z ]*)\s+(\d+):([\d,\s-]+)', normalized)
+    if not match:
+        raise ValueError(f'Exact NIV lookup needs an explicit book, chapter, and verses: {reference}')
+    book, chapter, selection = match.groups()
+    passages = []
+    from lxml import html
+    for part in selection.split(','):
+        part = part.strip()
+        limits = re.fullmatch(r'(\d+)(?:-(\d+))?', part)
+        if not limits:
+            raise ValueError(f'Invalid NIV verse selection: {reference}')
+        first, last = int(limits[1]), int(limits[2] or limits[1])
+        if first < 1 or last < first or last - first > 175:
+            raise ValueError(f'Invalid NIV verse range: {reference}')
+        requested = f'{book.strip()} {chapter}:{part}'
+        url = 'https://www.biblegateway.com/passage/?' + urlencode({'search': requested, 'version': 'NIV'})
+        cache_file = cache / (hashlib.sha256(requested.encode()).hexdigest()[:16] + '-NIV-source.json')
+        cached = cache_file.exists()
+        if cached:
+            record = read_json(cache_file)
+            if record.get('reference') != requested or record.get('url') != url or record.get('translation') != 'NIV':
+                raise ValueError(f'Invalid NIV source record: {cache_file}')
+            payload = record.get('html', '').encode('utf-8')
+            if hashlib.sha256(payload).hexdigest() != record.get('sha256'):
+                raise ValueError(f'NIV source cache changed: {cache_file}. Remove it and retry online.')
+        else:
+            if offline:
+                raise ValueError(f'Exact NIV source for {requested} is not cached. Rerun update without --offline; no paraphrase will be used.')
+            try:
+                with urlopen(Request(url, headers={'User-Agent': 'KentonWorshipWorkflow/1.0'}), timeout=25) as response:
+                    payload = response.read(2_000_000)
+            except Exception as error:
+                raise ValueError(f'Cannot retrieve exact NIV {requested}: {error}') from error
+        page = html.fromstring(payload)
+        headings = page.xpath('//*[contains(concat(" ", normalize-space(@class), " "), " passage-display ")]')
+        if len(headings) != 1 or 'New International Version' not in headings[0].text_content():
+            raise ValueError(f'Source is not labeled NIV for {requested}.')
+        heading_reference = headings[0].text_content().split('New International Version')[0].strip()
+        if handouts.reference(heading_reference) != handouts.reference(requested):
+            raise ValueError(f'NIV source reference does not match {requested}: {heading_reference}')
+        # Preserve rendered small capitals (notably LORD) when moving HTML
+        # into plain-text Word slots. Do not change any Scripture wording.
+        for small_caps in page.xpath('//*[contains(concat(" ", normalize-space(@class), " "), " small-caps ")]'):
+            for node in small_caps.iter():
+                if node.text:
+                    node.text = node.text.upper()
+                if node is not small_caps and node.tail:
+                    node.tail = node.tail.upper()
+        lines, verse_ids = parse_biblegateway(html.tostring(page, encoding='utf-8'))
+        numbers = {(int(v.rsplit('-', 2)[1]), int(v.rsplit('-', 2)[2])) for v in verse_ids}
+        expected = {(int(chapter), v) for v in range(first, last + 1)}
+        if numbers != expected:
+            raise ValueError(f'NIV source is missing or adds verses for {requested}; no partial quotation was used.')
+        if not cached:
+            save(cache_file, {'reference': requested, 'translation': 'NIV', 'url': url,
+                              'html': payload.decode('utf-8'), 'sha256': hashlib.sha256(payload).hexdigest()})
+        passages.append(' '.join(lines))
+    return '\n'.join(passages)
+
+
 def plain_plan(raw):
     result = {'date': raw['date']}
     for service in SERVICES:
@@ -297,20 +366,14 @@ def plain_plan(raw):
 
 
 def content_file(path, plan):
-    """The planner supplies the handout; content.json is only an optional override."""
+    """Planner metadata plus optional authored material; no fabricated teaching defaults."""
     result = {'date': plan['date']}
     for name in SERVICES:
         service = plan[name]
         result[name] = {'display_title': service['topic'] or '',
             'call_reference': service['call_to_worship'], 'translation': 'NIV', 'call_lines': [],
             'passage_reference': service['sermon'], 'passage_text': '', 'chord_files': {},
-            'target_words': [{'word': word,
-                              'question': 'How does this word help explain the passage?'} for word in service['study_words']],
-            'discussion_questions': [
-                'What main idea does the presentation ask us to consider?',
-                'Which example or argument stood out to you, and why?',
-                'How would you examine that idea in light of Scripture?',
-                'What question or practical response will you take away?']}
+            'target_words': [{'word': word} for word in service['study_words']]}
     if path.exists():
         overrides = read_json(path)
         if overrides.get('date') == plan['date']:
@@ -552,44 +615,8 @@ def bulletin(template, service, content, day, destination):
 
 
 def handout(service, content, day, destination):
-    from docx import Document
-    from docx.shared import Inches, Pt
-    doc = Document()
-    section = doc.sections[0]
-    section.top_margin = section.bottom_margin = Inches(.65)
-    style = doc.styles['Normal']
-    style.font.name, style.font.size = 'Calibri', Pt(11)
-    doc.add_heading('Discussion Sheet' if service['kind'] == 'discussion' else 'Word Study', 0)
-    doc.add_paragraph(f'{day} • {content["service"].title()} • {content["display_title"]}')
-    if service['kind'] == 'discussion':
-        for question in content['discussion_questions']:
-            doc.add_paragraph(question, style='List Number')
-            doc.add_paragraph('________________________________________________________________')
-    else:
-        doc.add_heading(service['sermon'] + ' — NIV', 1)
-        doc.add_paragraph(content['passage_text'])
-        # Fixed, readable spacing reserves writing room within a single page.
-        section.page_width, section.page_height = Inches(8.5), Inches(11)
-        style.paragraph_format.space_after = Pt(3)
-        style.paragraph_format.line_spacing = 1
-        for heading in ('Title', 'Heading 1', 'Heading 2'):
-            doc.styles[heading].paragraph_format.space_before = Pt(6)
-            doc.styles[heading].paragraph_format.space_after = Pt(3)
-        for item in content['target_words']:
-            doc.add_heading(item['word'], 2)
-            for prompt in (
-                'Old Testament: Where is this word or idea used? __________________',
-                'New Testament: Where is this word or idea used? _________________',
-                'Apply: How will you put this Scripture into practice? ______________',
-                item['question'],
-            ):
-                paragraph = doc.add_paragraph(prompt)
-                paragraph.paragraph_format.keep_with_next = True
-            response = doc.add_paragraph('____________________________________________________________' +
-                                         '\n____________________________________________________________')
-            response.paragraph_format.line_spacing = Pt(16)
-        doc.add_paragraph(NIV_NOTICE).runs[0].font.size = Pt(8)
-    doc.save(destination)
+    """Assemble authored teaching using the retained Word source."""
+    handouts.generate(service, content, destination)
 
 
 def chord_cover(service, day, songs, destination):
@@ -710,20 +737,18 @@ def gather(root, day, offline, chords):
                 issues.append(f'{name}: call_lines must contain nonempty text lines.')
         elif s['call_to_worship']:
             e['call_lines'] = attempt('call to worship', lambda: bible_reading(s['call_to_worship'], p['desktop'] / 'scripture-cache', offline))
-        if s['kind'] == 'discussion':
-            questions = e.get('discussion_questions')
-            if not isinstance(questions, list) or not questions or any(not isinstance(q, str) or not q.strip() for q in questions):
-                issues.append(f'{name}: optional discussion-question override is invalid.')
-        else:
-            words = e.get('target_words')
-            if not isinstance(words, list) or not words or any(not isinstance(w, dict) or any(not isinstance(w.get(k), str) or not w[k].strip() for k in ('word', 'question')) for w in words):
-                issues.append(f'{name}: no usable Study-words were found in the planner.')
-            if e.get('passage_text'):
-                if e.get('translation') != 'NIV' or norm(e.get('passage_reference')) != norm(s['sermon']):
-                    issues.append(f'{name}: supplied passage_text needs NIV and the matching passage_reference.')
-            elif s['sermon']:
-                lines = attempt('handout Scripture', lambda: bible_reading(s['sermon'], p['desktop'] / 'scripture-cache', offline))
-                e['passage_text'] = '\n'.join(lines or [])
+        sources = imported.get('planning_sources', [])
+        worship = Path(sources[0]).parent if sources else PLANNING_ROOT
+        e['_handout_source'] = attempt('handout', lambda: handouts.prepare(
+            s, e, [Path(record['templates']), worship / '_Handouts']))
+        if e['_handout_source']:
+            log(root, f'Reading authored handout/template: "{e["_handout_source"]}"')
+            if s['kind'] == 'word-study':
+                def lookup_niv(ref):
+                    log(root, f'Exact NIV word-study reference: {ref} (Bible Gateway source HTML)')
+                    return exact_niv_reading(ref, p['desktop'] / 'scripture-cache/word-study-niv', offline)
+                e['_verified_word_content'] = attempt('exact NIV word study', lambda:
+                    handouts.verified_word_content(s, e, lookup_niv))
         e['chords'] = []
         for song in s['praise_songs'] if chord_folders else []:
             file = attempt(f'chords for {song}', lambda song=song: chord_file(song, chord_folders, e.get('chord_files', {}).get(song)))
@@ -745,6 +770,33 @@ def replace_working_file(source, target):
         os.replace(temporary, target)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def finish_update_stage(root, stage, complete, manifest):
+    """Retire only a verified immediate .update-* child of this workspace's work folder."""
+    work = checked_path(Path(root) / 'work')
+    stage = checked_path(stage)
+    if stage.parent != work or not re.fullmatch(r'\.update-[A-Za-z0-9_-]+', stage.name):
+        raise ValueError(f'Refusing cleanup outside an update staging folder: {stage}')
+    # Reject nested junctions/links before any recursive filesystem operation.
+    list(files_under(stage))
+    if complete:
+        if not manifest:
+            raise ValueError('Refusing cleanup without verified generated output.')
+        for name, expected in manifest.items():
+            if Path(name).name != name:
+                raise ValueError(f'Invalid generated filename for cleanup: {name}')
+            for folder in ('output', 'desktop'):
+                if digest(checked_path(work / folder / name)) != expected:
+                    raise ValueError(f'Cannot clean staging: {folder}/{name} no longer matches generated output.')
+        shutil.rmtree(stage)
+        log(root, f'Removed successful update staging folder: {stage}')
+        return None
+    destination = checked_path(work / '_archive/failed-updates' / stage.name)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    stage.rename(destination)
+    log(root, f'Failed update working files retained at: {destination}')
+    return str(destination)
 
 
 def update_automation(root, day, check=False, offline=False, chords=None):
@@ -775,10 +827,25 @@ def update_automation(root, day, check=False, offline=False, chords=None):
         job = stage / stem
         job.mkdir()
         try:
+            if stem.endswith('-handout'):
+                # A failed handout must not leave the previous generic or wrong-kind
+                # document in active review output. Preserve it before attempting a rerun.
+                service_name = stem.removesuffix('-handout')
+                archive = Path(root) / 'work/_archive/handouts' / stage.name
+                for parent in (output, p['desktop']):
+                    for kind in ('word-study', 'discussion'):
+                        for suffix in ('.docx', '.pdf'):
+                            old = parent / f'{day}-{service_name}-{kind}{suffix}'
+                            if old.exists():
+                                retained = archive / parent.name / old.name
+                                retained.parent.mkdir(parents=True, exist_ok=True)
+                                old.rename(retained)
             build(job)
             log(root, f'Generated {label}.')
         except Exception as error:
             message = f'{label}: {error}'
+            if isinstance(error, PermissionError):
+                message += ' Close the open review file and rerun update.'
             failures.append(label)
             issues.append(message)
             log(root, 'ATTENTION: ' + message + ' Continuing other outputs.')
@@ -792,15 +859,26 @@ def update_automation(root, day, check=False, offline=False, chords=None):
                         continue
                 except Exception:
                     continue
-            if source.suffix.lower() == '.docx' and not source.with_suffix('.pdf').exists():
-                # An older PDF must not masquerade as the export of this new DOCX.
-                for parent in (output, p['desktop']):
-                    old_pdf = checked_path(parent / source.with_suffix('.pdf').name)
-                    if old_pdf.exists():
-                        old_pdf.rename(checked_path(stage / (parent.name + '-old-' + old_pdf.name)))
-            replace_working_file(source, output / source.name)
-            replace_working_file(source, p['desktop'] / source.name)
-            manifest[source.name] = digest(source)
+            try:
+                if source.suffix.lower() == '.docx' and not source.with_suffix('.pdf').exists():
+                    # An older PDF must not masquerade as the export of this new DOCX.
+                    for parent in (output, p['desktop']):
+                        old_pdf = checked_path(parent / source.with_suffix('.pdf').name)
+                        if old_pdf.exists():
+                            retained = checked_path(Path(root) / 'work/_archive/stale-pdfs' / stage.name / parent.name / old_pdf.name)
+                            retained.parent.mkdir(parents=True, exist_ok=True)
+                            old_pdf.rename(retained)
+                replace_working_file(source, output / source.name)
+                replace_working_file(source, p['desktop'] / source.name)
+                manifest[source.name] = digest(source)
+            except OSError as error:
+                if label not in failures:
+                    failures.append(label)
+                message = (f'{label}: cannot replace an open review file: {error}. '
+                           f'Close the file and rerun update. New files are retained at {job}.')
+                issues.append(message)
+                log(root, 'ATTENTION: ' + message + ' Continuing other outputs.')
+
 
     for name in SERVICES:
         s, e = plan[name], prepared[name]
@@ -820,21 +898,14 @@ def update_automation(root, day, check=False, offline=False, chords=None):
         attempt(f'{name} bulletin', f'{name}-bulletin', make_bulletin)
 
         def make_handout(folder):
-            if s['kind'] == 'discussion':
-                questions = e.get('discussion_questions')
-                if not questions or any(not isinstance(q, str) or not q.strip() for q in questions):
-                    raise ValueError('Discussion questions are missing; this handout was not generated.')
-            else:
-                words = e.get('target_words')
-                if not e.get('passage_text') or not words or any(not isinstance(w, dict) or any(not w.get(k) for k in ('word','question')) for w in words):
-                    raise ValueError('Needs the NIV passage and target-word material; this handout was not generated.')
-                if e.get('translation') != 'NIV' or norm(e.get('passage_reference')) != norm(s['sermon']):
-                    raise ValueError('Handout passage reference/translation does not match the plan.')
+            if not e.get('_handout_source'):
+                raise ValueError('Needs matching authored teaching material and its Word template; see handout attention above.')
             target = folder / f'{day}-{name}-{s["kind"]}.docx'
             handout(s, e, day, target)
             pdf = export_word(target)
             if s['kind'] == 'word-study' and len(PdfReader(pdf).pages) != 1:
-                issues.append(f'{name} word study exceeds one page; draft retained for review.')
+                raise ValueError('Word study must fit on one page. Draft retained for correction; '
+                                 'AI/user must shorten the selected material without paraphrasing NIV or shrinking the template fonts.')
         attempt(f'{name} handout', f'{name}-handout', make_handout)
 
         def make_chords(folder):
@@ -860,15 +931,21 @@ def update_automation(root, day, check=False, offline=False, chords=None):
             log(root, f'{name} praise chords not generated; see the single chord-source message above.')
         else:
             attempt(f'{name} praise chords', f'{name}-chords', make_chords)
+    working_files = str(stage)
+    try:
+        working_files = finish_update_stage(root, stage, not failures, manifest)
+    except (OSError, ValueError) as error:
+        issues.append(f'Temporary-file cleanup: {error}. Working files retained at {stage}.')
+        log(root, 'ATTENTION: ' + issues[-1])
     report_attention()
     save(status, {'date': day, 'complete': not failures, 'output': str(output),
                   'files': manifest, 'attention': issues, 'failed_outputs': failures,
-                  'visual_review_required': True, 'working_files': str(stage)})
+                  'visual_review_required': True, 'working_files': working_files})
     log(root, f'UPDATE finished: {len(manifest)} files refreshed; {len(failures)} outputs could not be completed. See {report}.')
     return 0
 
 
-def publish_automation(root, day, reviewed=False):
+def publish_automation(root, day, reviewed=False, force=False):
     p = paths(root, day)
     log(root, f'PUBLISH — {day}')
     if not reviewed:
@@ -881,19 +958,47 @@ def publish_automation(root, day, reviewed=False):
     actual = {str(f.relative_to(output)): digest(f) for f in files_under(output)}
     if build.get('date') != day or actual != build['files']:
         raise ValueError('Review output changed after generation. Rerun update so Word and PDF stay in agreement.')
-    target = p['weeks'] / date.fromisoformat(day).strftime('%Y%m%d')
-    if target.exists():
-        raise ValueError(f'Week-set already exists: {target}. Nothing was overwritten.')
-    staged = Path(tempfile.mkdtemp(prefix='.publish-', dir=p['weeks']))
+    weeks = checked_path(PUBLISH_ROOT)
+    if not weeks.is_dir():
+        raise ValueError(f'Publish folder is unavailable: "{weeks}". Connect Google Drive and retry; no local fallback is used.')
+    target = checked_path(weeks / date.fromisoformat(day).strftime('%Y%m%d'))
+    log(root, f'Publish destination: "{target}"')
+    if target.exists() and not force:
+        raise ValueError(f'Week-set already exists: {target}. Nothing was overwritten. Use --reviewed --force to replace it.')
+    if target.exists() and not target.is_dir():
+        raise ValueError(f'Week-set destination is not a folder: {target}. Nothing was overwritten.')
+    staged = Path(tempfile.mkdtemp(prefix='.publish-', dir=weeks))
+    backup = None
     try:
         copy_tree(output, staged)
         if {str(f.relative_to(staged)): digest(f) for f in files_under(staged)} != actual:
             raise ValueError('Published copy did not match review output.')
         if {str(f.relative_to(output)): digest(f) for f in files_under(output)} != actual:
             raise ValueError('Review output changed during publication. Retry.')
-        # Windows rename fails if the destination already exists.
+        if force and target.exists():
+            # Both resolved paths stay beneath the selected publication root.
+            # Move the entire old set, including files absent from the new output.
+            checked_path(target)
+            archive = checked_path(weeks / '_archive')
+            archive.mkdir(exist_ok=True)
+            container = Path(tempfile.mkdtemp(prefix=target.name + '-', dir=archive))
+            backup = checked_path(container / target.name)
+            if weeks not in target.parents or weeks not in backup.parents:
+                raise ValueError('Publication replacement paths must remain inside WEEK-SETS.')
+            target.rename(backup)
+            log(root, f'Previous week-set preserved at "{backup}"')
+        # Windows rename fails if another process creates the destination.
         staged.rename(target)
     except Exception:
+        if backup is not None and backup.exists():
+            if not target.exists():
+                try:
+                    backup.rename(target)
+                    log(root, f'Previous week-set restored at "{target}"')
+                except OSError as error:
+                    log(root, f'Could not restore previous week-set: {error}. Recover it from "{backup}".')
+            else:
+                log(root, f'Destination now exists; previous week-set remains safe at "{backup}".')
         log(root, f'Incomplete publication retained for inspection at {staged}')
         raise
     log(root, f'PUBLISH complete: {target}. Templates and prior review runs were excluded.')
@@ -904,7 +1009,7 @@ def main(stage, argv=None):
     parser = argparse.ArgumentParser(description={
         'input': "Read planning workbooks and copy last week's templates.",
         'update': 'Generate this week’s bulletins, handouts and praise chord sets.',
-        'publish': 'Copy reviewed documents to a new local week-set.'}[stage])
+        'publish': 'Copy reviewed documents to a new Google Drive week-set.'}[stage])
     parser.add_argument('--date', help='Sunday as YYYY-MM-DD; defaults to the current input week (or next Sunday for input).')
     if stage == 'input':
         parser.add_argument('--previous-week', type=Path, help='Last week’s folder if automatic selection is ambiguous.')
@@ -914,6 +1019,7 @@ def main(stage, argv=None):
         parser.add_argument('--chords', type=Path, help='Read-only praise-chords source folder.')
     else:
         parser.add_argument('--reviewed', action='store_true', help='Confirm you reviewed this output before copying it.')
+        parser.add_argument('--force', action='store_true', help='Replace an existing Drive week-set, preserving it under week-sets/_archive. Requires --reviewed.')
     args = parser.parse_args(argv)
     try:
         if args.date:
@@ -932,7 +1038,7 @@ def main(stage, argv=None):
             return input_automation(ROOT, day.isoformat(), args.previous_week) or 0
         if stage == 'update':
             return update_automation(ROOT, day.isoformat(), args.check, args.offline, args.chords)
-        return publish_automation(ROOT, day.isoformat(), args.reviewed)
+        return publish_automation(ROOT, day.isoformat(), args.reviewed, args.force)
     except ImportError as error:
         log(ROOT, f'Missing Python dependency: {error}. Install once with: python -m pip install -e .')
         return 1

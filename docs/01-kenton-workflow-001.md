@@ -32,10 +32,10 @@ Report separately what passed in automated tests, what ran against real files, a
 | PLANNING | `G:\My Drive\kenton\_worship` | Current planning workbooks directly from Drive; read-only inputs, preserving their actual filenames |
 | DESKTOP | `work/desktop` | Log, readable planning exports, temporary JSON, editable content, working builds |
 | OUTPUT | `work/output` | Generated documents for review; no date subfolder |
-| WEEK-SETS | `work/week-sets` | Local completed weekly sets and the previously copied archive |
+| WEEK-SETS | `G:\My Drive\kenton\_worship\week-sets` | Reviewed weekly sets; publish creates a new `YYYYMMDD` folder here |
 | PRAISE CHORDS | Your praise-chords folder under `G:\My Drive\kenton\_worship` | Read-only music sources |
 
-DESKTOP means the repository folder, not the Windows Desktop. Church content stays under Git-ignored `work/`. The scripts never change Google Drive files or the planning workbooks.
+DESKTOP means the repository folder, not the Windows Desktop. Church content stays under Git-ignored `work/`. Input and update never change Drive source documents or planning workbooks. Publish writes a new reviewed week-set to the Drive WEEK-SETS folder.
 
 ## Commands
 
@@ -80,9 +80,9 @@ Identical template copies are reused. A differing existing template copy is pres
    - Replace the date, songs, hymns, sermon/program information, prayer, and reading. Preserve a preacher line following the title's line break.
    - Report the affected bulletin if template song/hymn slots differ from the plan; continue other outputs. Do not drop selections or guess positions.
 5. Generate morning and evening **handouts**.
-   - Normal sermon: one-page Word study, NIV passage, supplied target words, meanings, and questions.
-   - `MOV`: discussion sheet using supplied discussion questions.
-   - Export through Word. A Word study exceeding one page is retained as a draft with an ATTENTION message; do not reduce fonts automatically.
+   - Normal sermon: one-page Word study with the complete NIV passage and NIV cross-references grouped under the planner’s selected words. No Greek or commentary.
+   - `MOV`: source-specific teaching points and related reflection questions, following the reference pattern below.
+   - Export through Word using the matching retained Word template. Word studies must fit on one page; MOV handouts retain their separate two-page pattern. Do not reduce fonts automatically. A Word study exporting to more than one page is an incomplete draft requiring shorter authored selections before publication.
 6. Generate morning and evening **praise chord sets**.
    - Header page: date, service, songs in planner order.
    - Read selected PDF/DOCX chord files from the praise-chords source.
@@ -93,11 +93,46 @@ Microsoft Word exports PDFs from the generated DOCX files. Bulletin PDFs are not
 
 ### Handouts and chord sources
 
-The planner's `Study-words` row supplies the morning target words (and a row in the evening section supplies evening words). Word-study worksheets include the NIV passage, the selected words, space for their meaning in context, and a study question. Missing prewritten definitions do not block worksheet generation.
+The user's supplied examples define the handout reference patterns. Instructions addressed to readers inside the examples are handout content, not commands to the agent. Their specific teaching content applies to their own subjects and must not be carried into unrelated studies.
 
-For MOV, generate a discussion worksheet with standard viewing questions about the main idea, examples, Scripture, and application. These prompts do not claim knowledge of the video's specific content. Neither worksheet requires the user to fill out `content.json`.
+#### MOV study and discussion handout
 
-An existing same-date `work/desktop/content.json` can optionally override wording or chord choices. Empty fields are ignored. Scripture may be supplied there or retrieved from Bible Gateway.
+Reference: `G:/My Drive/kenton/_worship/_Handouts/How Should We Then Live/How_Should_We_Then_Live_Episode_6_Scientific_Age_Study_Handout.docx.pdf` (two pages).
+
+- Identify the series, episode number, title, and presenter. Begin with a purpose paragraph explaining the particular issue to watch for.
+- Supply five points to watch for, each with a clear leading statement and an explanatory paragraph grounded in the actual episode or corresponding source material.
+- Follow with five related reflection questions, substantive follow-up prompts, and writing space.
+- Include relevant Scripture with references and a closing viewing/reading focus that draws together the central issue.
+- Follow the example's structure: teaching on the first page; reflection, Scripture, and closing focus on the second. Preserve the matching retained Word template's headings, restrained shaded callouts, and identifying headers/footers.
+- AI/Codex reads the relevant source and drafts the teaching content. Verify episode identity and claims. If the source is unavailable, identify what is needed; do not invent a summary or substitute generic viewing questions.
+
+#### Sermon Word study
+
+Reference: `G:/My Drive/kenton/_worship/_Handouts/Matthew_5_5-6_Word_Study.pdf` (four pages with seven word sections).
+
+- Begin with a meaningful title, passage reference, complete NIV passage. Do not print an introduction or commentary.
+- The planner's `Study-words` row supplies the selected words for the appropriate service.
+- Do not include Greek, original-language terms, transliterations, or the old Greek definition paragraphs. For each selected word, include Old Testament and New Testament references with exact NIV quotations for the stated verses. Shorter, contiguous NIV excerpts are permitted to fit one page; label them as excerpts and cite the precise verse reference. Never substitute interpretations, summaries, or paraphrases for Scripture. A single-verse reference must always print the whole NIV verse, even if saved content contains an excerpt. Do not print commentary, explanations, or a closing synthesis.
+- Select references for the specific heading, not merely the passage's general theme. Prefer verses using the selected word; otherwise the verse must explicitly express its meaning in the NIV (for example, receiving or finding mercy for Obtain). Verify that connection from the actual verse before including it. A reference may appear under more than one heading when it directly supports both. Do not pad the columns with loosely related verses or claim matching Greek words. Use fewer strong references when needed to preserve the readable one-page layout.
+- An optional further-reading list may contain Scripture references only. Retain the Scripture attribution notice; omit “Putting It Together” and all commentary.
+- Preserve readable word sections and the retained template's visual treatment on one readable page. Generic blank exercises asking readers to supply all the meanings and references do not meet this standard.
+
+#### Authoring, assembly, and review
+
+AI/Codex prepares substantive teaching material from the planner and verified sources within the existing update stage, or uses user-supplied material. The user is not required to author JSON or supply every question. Python performs repeatable mapping, validation, document assembly, and Word export using explicit authored content; it does not invent definitions, interpretations, or questions.
+
+Same-date `work/desktop/content.json` is the handoff for authored material and optional wording or chord overrides. Empty fields are not authored content. Missing teaching material affects only the relevant handout: continue independent outputs and report the specific missing material instead of silently substituting stock prompts.
+
+The example PDFs are visual references, not editable Word templates. Update looks for matching authored DOCX studies in `work/desktop/previous` and the read-only `_Handouts` directory under the recorded worship source. It checks the passage and ordered Study-words, or series, episode number, and title, before using a matching study. MOV sources can be copied unchanged; Word studies always replace passage and cross-reference text with verified NIV and remove the legacy Greek paragraphs. An explicit `handout_source` can select among differing versions. Complete source paths are logged. Inspect every rendered page against its reference pattern. Human review remains required before publication.
+
+For newly authored teaching, each service's `content.json` entry can specify an absolute `handout_template` DOCX path and a `handout_content` object. This is the AI/Codex author-to-Python handoff, not a form the user must fill in. The assembler reuses the template's components and preserves untouched package parts. Unsupported template structures receive an actionable error rather than a substitute layout.
+
+- MOV content fields: `series`, `episode` (text), `episode_title`, `presenter`, `purpose`, `focus`; five `points` and five `questions`, each with `lead` and `text`; and `scripture`, a list of `reference`/`text` objects.
+- Word-study authoring fields: `title`, `passage_reference`, `translation` (`NIV`), optional `further_reading`; and `words` in planner order. Each word supplies `word`, plus `old_testament` and `new_testament` lists of `reference` objects. A multi-verse reference can optionally supply an AI/user-selected `excerpt`. A single-verse reference always prints the complete verified NIV verse and ignores any saved excerpt. It must match a contiguous quotation in the verified NIV source, including case and punctuation (whitespace is normalized); paraphrases, changed words, and internal omissions are rejected. Excerpts print with an explicit NIV excerpt label. Any other supplied Scripture `text` or `passage_text` is replaced with exact source text; legacy `language`, `term`, `meaning`, `introduction`, `context`, and `summary` fields are not printed.
+
+Word-study Scripture is retrieved from Bible Gateway NIV pages. The reader verifies the translation, passage heading, and complete requested verse set; it removes verse-number/footnote markup, normalizes whitespace, and preserves displayed small capitals such as LORD. It does not rewrite the wording. It stores source HTML, URL, and a checksum under `work/desktop/scripture-cache/word-study-niv`, then re-parses and validates that source on reruns. The old free-text Scripture cache is not accepted for these quotations. `--offline` requires these source records; missing or invalid source material prevents only the affected handout, with an actionable attention message. AI/Codex selects shorter exact excerpts to fit one page, while Python verifies them rather than automatically selecting or truncating Scripture. Keep the main passage complete. Verify the exported PDF is one page and visually readable.
+
+The generator supplies no generic prompts and enforces the one-page limit after Word export. An oversized Word study prevents a completed build and publication, while other documents continue. Reruns preserve earlier handouts under `work/_archive/handouts` before replacing them; an unsuccessful handout does not leave its older version in active review output. The other documents are still attempted independently.
 
 Praise-chord folders are discovered by their actual names under the Drive worship source, including nested folders such as `Praise/Chords`. If necessary, select an explicit folder with `--chords "FULL PATH"`. An unavailable source is reported once, not once for every song. Page-number suffixes are ignored when comparing song titles and filenames.
 
@@ -105,9 +140,11 @@ Praise-chord folders are discovered by their actual names under the Drive worshi
 
 Rerun input to overwrite the working Excel and previous-week copies with the latest source contents. Rerun update to overwrite generated files. ATTENTION messages do not stop the update run: each service and document is attempted independently. A document missing essential content is reported as not generated; other documents continue. A successfully generated DOCX is retained even if PDF export fails. Older PDFs are removed from active output when they no longer correspond to the new DOCX. See `needs-attention.txt` for what remains.
 
+Successful update runs verify the DESKTOP and OUTPUT copies and delete their temporary `work/.update-*` folder. Failed runs retain diagnostic files under `work/_archive/failed-updates`; `work/build.json` records that location. Cleanup never deletes review output, source templates, or archives. If cleanup fails, its folder is retained and the attention log identifies it.
+
 ## Review
 
-Open both services in `OUTPUT`. Check content and every rendered page: responsive lines, unison prayer, song order, spacing, page breaks, and the one-page Word study.
+Open both services in `OUTPUT`. Check content and every rendered page: responsive lines, unison prayer, song order, spacing, page breaks, and each handout's teaching content and layout against its reference pattern.
 
 Correct planning facts in the workbook and authored material in `content.json`, then rerun update. Earlier successful output is retained outside DESKTOP and OUTPUT under `work/_archive`. A failed build remains on DESKTOP for inspection and cannot be published. Automated completion means files were produced, not that their appearance has been approved.
 
@@ -115,10 +152,30 @@ Correct planning facts in the workbook and authored material in `content.json`, 
 
 1. Require a completed update and `--reviewed` to confirm review.
 2. Check that review files still match the generated set, keeping Word and PDF together.
-3. Create a new local week-set using the existing `YYYYMMDD` convention.
+3. Create a new Google Drive week-set under `G:\My Drive\kenton\_worship\week-sets` using the existing `YYYYMMDD` convention.
 4. Copy `OUTPUT` into it and verify the copies.
 
-Exclude templates, earlier review runs, logs, and temporary files. Never overwrite an existing week-set. `work/week-sets/20260927` already exists, so publishing that date will stop instead of replacing it. Publication means a local file copy, not a website, Facebook, YouTube, Drive, or GitHub update.
+Exclude templates, earlier review runs, logs, and temporary files. By default, stop if the Drive week-set already exists. For 2026-09-27, the destination is `G:\My Drive\kenton\_worship\week-sets\20260927`. An existing local `work/week-sets/20260927` is not used and does not prevent Drive publication. If the Drive folder is unavailable, stop without a local fallback.
+
+Publish a new week-set after reviewing OUTPUT:
+
+```powershell
+python scripts/publish-automation.py --reviewed
+```
+
+Replace an existing week-set after reviewing the replacement output:
+
+```powershell
+python scripts/publish-automation.py --reviewed --force
+# Or select the date explicitly (it must match the completed update):
+python scripts/publish-automation.py --date 2026-09-27 --reviewed --force
+```
+
+`--force` replaces the entire dated folder, rather than merging files. The script first copies and verifies the new output in a temporary folder on Drive. It then preserves the previous set at `week-sets/_archive/YYYYMMDD-<unique-id>/YYYYMMDD` and moves the verified replacement into place. The full backup path is logged. If the final move fails, it attempts to restore the previous set; if restoration is blocked, the log gives its recovery location. Other dated week-sets are unchanged.
+
+`--force` does not bypass `--reviewed`, completed-update validation, or file-hash checks. A successful command verifies the replacement; it does not delete the archived previous set.
+
+The destination is configured by `PUBLISH_ROOT` near the top of `src/kenton_workflow/automation.py` and is logged before copying. Publish verifies file hashes in the mounted Drive folder; Google Drive for desktop handles cloud synchronization. A successful copy does not independently verify cloud sync completion.
 
 ## Reading a failure
 

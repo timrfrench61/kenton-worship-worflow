@@ -1,4 +1,4 @@
-"""Copy the reviewed output into a new local week-set."""
+"""Copy reviewed output to G:\\My Drive\\kenton\\_worship\\week-sets\\YYYYMMDD."""
 from pathlib import Path
 import sys
 
