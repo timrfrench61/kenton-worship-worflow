@@ -21,7 +21,7 @@ from zipfile import ZipFile
 import openpyxl
 
 from kenton_workflow.planner import extract_week, praise_title
-from kenton_workflow import handouts
+from kenton_workflow import handouts, website
 from kenton_workflow.sync import checked_path, GOOGLE_NATIVE_EXTENSIONS
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -816,6 +816,14 @@ def update_automation(root, day, check=False, offline=False, chords=None):
     if check:
         log(root, 'Input check finished. Attention items are advisory; update will attempt each output independently.')
         return 0
+    if (Path(root) / 'website.json').exists():
+        try:
+            draft = website.prepare(root, day, plan)
+            log(root, f'Website panels ready for review: {draft}')
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            save(Path(root) / 'work/website-build.json', {'date': day, 'complete': False})
+            issues.append(f'Website panels: {error}')
+            log(root, 'ATTENTION: ' + issues[-1])
     from pypdf import PdfReader, PdfWriter
     stage = Path(tempfile.mkdtemp(prefix='.update-', dir=Path(root) / 'work'))
     output = p['output']
@@ -905,7 +913,7 @@ def update_automation(root, day, check=False, offline=False, chords=None):
             pdf = export_word(target)
             if s['kind'] == 'word-study' and len(PdfReader(pdf).pages) != 1:
                 raise ValueError('Word study must fit on one page. Draft retained for correction; '
-                                 'AI/user must shorten the selected material without paraphrasing NIV or shrinking the template fonts.')
+                                 'AI/user must select fewer relevant verses without paraphrasing NIV. Use 14-point body text, or an explicit 13-point setting; never smaller.')
         attempt(f'{name} handout', f'{name}-handout', make_handout)
 
         def make_chords(folder):
@@ -1014,10 +1022,13 @@ def main(stage, argv=None):
     if stage == 'input':
         parser.add_argument('--previous-week', type=Path, help='Last week’s folder if automatic selection is ambiguous.')
     elif stage == 'update':
+        parser.add_argument('--website-only', action='store_true', help='Prepare only the four website panels from the planning copies.')
         parser.add_argument('--check', action='store_true', help='List missing inputs without generating documents.')
         parser.add_argument('--offline', action='store_true', help='Use supplied/cached Scripture without contacting Bible Gateway.')
         parser.add_argument('--chords', type=Path, help='Read-only praise-chords source folder.')
     else:
+        parser.add_argument('--website', action='store_true', help='Also apply reviewed panels to the configured local website project after Drive publication.')
+        parser.add_argument('--website-only', action='store_true', help='Apply only reviewed panels to the local website project; no Drive publication.')
         parser.add_argument('--reviewed', action='store_true', help='Confirm you reviewed this output before copying it.')
         parser.add_argument('--force', action='store_true', help='Replace an existing Drive week-set, preserving it under week-sets/_archive. Requires --reviewed.')
     args = parser.parse_args(argv)
@@ -1037,8 +1048,27 @@ def main(stage, argv=None):
         if stage == 'input':
             return input_automation(ROOT, day.isoformat(), args.previous_week) or 0
         if stage == 'update':
+            if args.website_only:
+                if args.check:
+                    raise ValueError('Use --website-only without --check to prepare the review draft.')
+                planning = ROOT / 'work/planning'
+                planner = workbook_file(planning, 'recent logs')
+                catalog = workbook_file(planning, 'song lists')
+                log(ROOT, f'Website planning inputs: "{planner}"; "{catalog}"')
+                save(ROOT / 'work/website-build.json', {'date': day.isoformat(), 'complete': False})
+                plan = plain_plan(extract_week(planner, catalog, day.isoformat()))
+                log(ROOT, f'Website panels ready for review: {website.prepare(ROOT, day.isoformat(), plan)}')
+                return 0
             return update_automation(ROOT, day.isoformat(), args.check, args.offline, args.chords)
-        return publish_automation(ROOT, day.isoformat(), args.reviewed, args.force)
+        if args.website_only:
+            if args.force:
+                raise ValueError('--force applies only to Drive week-sets; website edits are protected from overwrite.')
+            log(ROOT, f'LOCAL WEBSITE updated: {website.publish(ROOT, day.isoformat(), args.reviewed)}. Live site deployment is separate.')
+            return 0
+        result = publish_automation(ROOT, day.isoformat(), args.reviewed, args.force)
+        if args.website:
+            log(ROOT, f'LOCAL WEBSITE updated: {website.publish(ROOT, day.isoformat(), args.reviewed)}. Live site deployment is separate.')
+        return result
     except ImportError as error:
         log(ROOT, f'Missing Python dependency: {error}. Install once with: python -m pip install -e .')
         return 1

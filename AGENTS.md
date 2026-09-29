@@ -1,5 +1,13 @@
 # Kenton workflow
 
+- Keep root `README.md` as the navigation/folder-map entry point. Keep developer-only fixtures and environments in temporary directories or `work/_archive`, not alongside active jobs. Inventory CLI tests must redirect backup storage into their temporary fixture root. Preserve active work and reviewed outputs when organizing.
+
+- User-approved exception: maintain public YouTube inventory and editorial labels in Git-tracked `data/youtube-videos.json` using `scripts/inventory-youtube.py`. Preserve `local` labels on sync. Keep credentials, recordings, and backups under ignored `work/`; catalog labeling never changes YouTube. See `data/README.md`.
+
+- Word studies use 14-point Scripture/body text and 16-point main/word headings. Explicit 13-point body text is allowed for fit; never smaller. Secondary headings and attribution may be smaller. Choose fewer relevant full verses to preserve a readable one-page sheet.
+
+- Website panels: configuration is `website.json`; prepare with update (or `--website-only`), then apply to the local website project with `publish-automation.py --website-only --reviewed`. Live deployment is separate. Preserve the existing design, verify last week's exact date, and do not carry old handout links or speakers into new services.
+
 - Read `docs/01-kenton-workflow-001.md` first. It is the current specification.
 - Documents in `docs/_archive` describe retired work. Do not reintroduce those workflows.
 - Use `scripts/input-automation.py`, `scripts/update-automation.py`, and `scripts/publish-automation.py`.

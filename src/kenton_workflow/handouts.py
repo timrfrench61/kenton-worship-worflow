@@ -152,6 +152,8 @@ def validate(data, service):
         records('scripture', ('reference', 'text'))
     else:
         required(data, ('title', 'passage_reference', 'translation'))
+        if data.get('body_font_size', 14) not in (13, 14):
+            raise ValueError('Word-study body_font_size must be 14, or 13 when needed to fit one page.')
         if data['translation'] != 'NIV' or reference(data['passage_reference']) != reference(service['sermon']):
             raise ValueError('Authored NIV passage must match the planner.')
         words = records('words', ('word',))
@@ -163,7 +165,7 @@ def validate(data, service):
 
 
 def verified_word_content(service, content, lookup):
-    """Use authored commentary/reference choices, but fetch ALL Scripture verbatim.
+    """Use authored reference choices, but fetch ALL Scripture verbatim.
 
     lookup is the NIV source reader, not an AI author. Neither legacy DOCX
     summaries nor supplied JSON verse text is trusted as the Scripture source.
@@ -243,6 +245,20 @@ def fill(paragraph, pieces):
             node.text = line
 
 
+def font_size(element, points):
+    """Explicit reader-approved sizing overrides small retained template runs."""
+    for run in element.iter(W + 'r'):
+        properties = run.find(W + 'rPr')
+        if properties is None:
+            properties = etree.Element(W + 'rPr')
+            run.insert(0, properties)
+        for tag in ('sz', 'szCs'):
+            size = properties.find(W + tag)
+            if size is None:
+                size = etree.SubElement(properties, W + tag)
+            size.set(W + 'val', str(points * 2))
+
+
 def generate(service, content, destination):
     source = Path(content['_handout_source'])
     data = content.get('handout_content')
@@ -287,6 +303,10 @@ def generate(service, content, destination):
         fill(blocks[0], [data['title']])
         fill(blocks[1], ['A Word Study on ' + data['passage_reference']])
         fill(blocks[2], [data['passage_text'] + '\n', data['passage_reference'] + ', NIV'])
+        body_size = data.get('body_font_size', 14)
+        font_size(blocks[0], 16)
+        font_size(blocks[1], 11)
+        font_size(blocks[2], body_size)
         first = slots['words'][0]
         for number, word in enumerate(data['words'], 1):
             heading = deepcopy(blocks[first])
@@ -298,6 +318,8 @@ def generate(service, content, destination):
             if properties.find(W + 'tblHeader') is None:
                 etree.SubElement(properties, W + 'tblHeader')
             fill(heading, [f'{number}. {word["word"]}'])
+            font_size(heading, 16)
+            font_size(header, 11)
             cells = table.xpath('./w:tr/w:tc', namespaces=NS)[2:]
             for cell, field in zip(cells, ('old_testament', 'new_testament')):
                 sample = cell.find(W + 'p')
@@ -307,6 +329,7 @@ def generate(service, content, destination):
                     p = deepcopy(sample)
                     label = ' (NIV excerpt) — ' if 'excerpt' in item else ' (NIV) — '
                     fill(p, [item['reference'] + label, item['text']])
+                    font_size(p, body_size)
                     cell.append(p)
             for b in (heading, table):
                 body.insert(body.index(blocks[first]), b)
@@ -315,6 +338,7 @@ def generate(service, content, destination):
                 continue
             if i == slots['further'] and data.get('further_reading'):
                 fill(b, ['For further reading: ' + data['further_reading']])
+                font_size(b, 11)
             else:
                 body.remove(b)
     changed['word/document.xml'] = etree.tostring(tree, xml_declaration=True, encoding='UTF-8', standalone=True)

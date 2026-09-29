@@ -22,7 +22,9 @@ token*.json
 *.key
 
 # Working church materials belong in Google Drive
-/data/
+/data/*
+!/data/README.md
+!/data/youtube-videos.json
 /private/
 /outputs/
 /archives/

@@ -120,6 +120,13 @@ class HandoutTests(unittest.TestCase):
                     self.assertIn('New focus', rendered_text)
                 if kind == 'word-study':
                     self.assertEqual(len(Document(out).tables), 2)
+                    study = Document(out)
+                    self.assertEqual(study.paragraphs[0].runs[0].font.size.pt, 16)
+                    for table in study.tables:
+                        for cell in table.rows[1].cells:
+                            for paragraph in cell.paragraphs:
+                                for run in paragraph.runs:
+                                    self.assertEqual(run.font.size.pt, 14)
                     self.assertIn('Second', rendered_text)
                     self.assertNotIn('Greek:', rendered_text)
                     self.assertNotIn('New meaning', rendered_text)

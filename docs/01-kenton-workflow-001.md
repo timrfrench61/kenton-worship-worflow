@@ -1,5 +1,7 @@
 # Kenton workflow 001
 
+Scope: weekly worship documents, Drive week-sets, and website panels. For the YouTube inventory/audio task, start at the [project README](../README.md); this document does not run media repair.
+
 1. Prepare the inputs
 2. update the worship documents
 3. review them
@@ -82,7 +84,7 @@ Identical template copies are reused. A differing existing template copy is pres
 5. Generate morning and evening **handouts**.
    - Normal sermon: one-page Word study with the complete NIV passage and NIV cross-references grouped under the planner’s selected words. No Greek or commentary.
    - `MOV`: source-specific teaching points and related reflection questions, following the reference pattern below.
-   - Export through Word using the matching retained Word template. Word studies must fit on one page; MOV handouts retain their separate two-page pattern. Do not reduce fonts automatically. A Word study exporting to more than one page is an incomplete draft requiring shorter authored selections before publication.
+   - Export through Word using the matching retained Word template. Word studies must fit on one page with 14-point Scripture/body text and 16-point main/word headings; 13-point body text is permitted only when needed. Secondary headings and attribution may be smaller. Reduce the number of references before compromising readability; never use 9-point Scripture. MOV handouts retain their separate two-page pattern. A Word study exporting to more than one page is an incomplete draft requiring shorter authored selections before publication.
 6. Generate morning and evening **praise chord sets**.
    - Header page: date, service, songs in planner order.
    - Read selected PDF/DOCX chord files from the praise-chords source.
@@ -116,6 +118,7 @@ Reference: `G:/My Drive/kenton/_worship/_Handouts/Matthew_5_5-6_Word_Study.pdf` 
 - Select references for the specific heading, not merely the passage's general theme. Prefer verses using the selected word; otherwise the verse must explicitly express its meaning in the NIV (for example, receiving or finding mercy for Obtain). Verify that connection from the actual verse before including it. A reference may appear under more than one heading when it directly supports both. Do not pad the columns with loosely related verses or claim matching Greek words. Use fewer strong references when needed to preserve the readable one-page layout.
 - An optional further-reading list may contain Scripture references only. Retain the Scripture attribution notice; omit “Putting It Together” and all commentary.
 - Preserve readable word sections and the retained template's visual treatment on one readable page. Generic blank exercises asking readers to supply all the meanings and references do not meet this standard.
+- The user's readable typography overrides small fonts in retained templates: default body/Scripture 14 points, main and word headings 16 points, secondary headings 11 points; retain the small attribution footer. AI may explicitly select `body_font_size: 13` when necessary, but no smaller value is accepted. Select fewer directly relevant full verses to fit the page; do not automatically shrink or truncate text.
 
 #### Authoring, assembly, and review
 
@@ -149,6 +152,24 @@ Open both services in `OUTPUT`. Check content and every rendered page: responsiv
 Correct planning facts in the workbook and authored material in `content.json`, then rerun update. Earlier successful output is retained outside DESKTOP and OUTPUT under `work/_archive`. A failed build remains on DESKTOP for inspection and cannot be published. Automated completion means files were produced, not that their appearance has been approved.
 
 ## 3. Publish automation
+
+### Local website service panels
+
+`website.json` configures the website project and its panel data file. The current destination is `C:/repos/kenton_website/wwwroot/data/worship-highlights.json`. This updates the local website project; deployment to kentonchurch.org remains separate.
+
+Normal update also prepares `work/desktop/worship-highlights.json` for review. The four panels retain the website design. Last Sunday's morning/evening cards come from the website's verified matching date, preserving their details and links. Upcoming services come from the selected planner Sunday: topic, sermon reference, call-to-worship Scripture, songs and hymns. Unknown speakers and obsolete download links are omitted. New handout uploads are outside this first integration. A missing previous-date card is reported rather than relabeled as last week.
+
+To update just the panels without regenerating Word/PDF files:
+
+```powershell
+python scripts/update-automation.py --website-only
+# Review work/desktop/worship-highlights.json and the local website.
+python scripts/publish-automation.py --website-only --reviewed
+```
+
+To publish the Drive set and then apply the reviewed local website panels, add `--website` to the usual publish command. These are separate destinations: if website publication fails after Drive succeeds, Drive remains published; correct the issue and retry with `--website-only`. The website draft has its own completion/hash checks, so a locked handout does not block a website-only update. Website publication archives the previous JSON under `work/_archive/website`, uses an atomic file replacement, and refuses to overwrite website edits made since preparation. `--force` applies only to Drive week-sets. No Git commit, push, or live deployment is performed.
+
+### Drive week-set
 
 1. Require a completed update and `--reviewed` to confirm review.
 2. Check that review files still match the generated set, keeping Word and PDF together.
