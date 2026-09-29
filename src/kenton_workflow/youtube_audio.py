@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from .audio_repair import WORK, digest, save
+from .youtube_config import configured_channel
 
 BASE = "https://www.googleapis.com/auth/"
 SCOPES = {"read": [BASE + "youtube.readonly"],
@@ -49,14 +50,16 @@ def service(role: str, directory: Path, authorize: bool = False):
     granted = credentials.granted_scopes
     if granted is not None and set(granted) != set(SCOPES[role]):
         raise ValueError("Google returned different scopes. Use separate OAuth projects for these roles and authorize again.")
+    api = build("youtube", "v3", credentials=credentials, cache_discovery=False)
+    channel_check(api, configured_channel())
     token.write_text(credentials.to_json(), encoding="utf-8")
-    return build("youtube", "v3", credentials=credentials, cache_discovery=False)
+    return api
 
 
 def channel_check(api, expected: str) -> None:
     channels = api.channels().list(part="id", mine=True).execute().get("items", [])
-    if expected not in [item["id"] for item in channels]:
-        raise ValueError(f"Authorized account is not the requested channel {expected}; no changes made.")
+    if [item["id"] for item in channels] != [expected]:
+        raise ValueError(f"Authorization does not provide configured channel {expected}. Run auth again and select Kenton Church EPC, not your personal channel or Kenton Session. No video changes made.")
 
 
 def video(api, video_id: str, channel: str) -> dict:
@@ -189,12 +192,13 @@ def main(argv: list[str] | None = None) -> int:
     mark.add_argument("--action", choices=("document", "notice", "private", "unlisted"), required=True)
     mark.add_argument("--reviewed", action="store_true")
     for command in (read, up, mark):
-        command.add_argument("--channel-id", required=True)
+        command.add_argument("--channel-id", help="Optional assertion; must match youtube.json")
     args = parser.parse_args(argv)
     try:
         # Fail before OAuth/network access when the user has not indicated review.
         if args.command in ("upload", "mark-original") and not args.reviewed:
             raise ValueError("Review the file/replacement first, then pass --reviewed.")
+        args.channel_id = configured_channel(getattr(args, "channel_id", None))
         if args.command == "auth":
             service(args.role, args.credentials_dir, authorize=True)
             print(f"Authorized {args.role}.")

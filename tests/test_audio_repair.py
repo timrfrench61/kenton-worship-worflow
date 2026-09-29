@@ -95,7 +95,7 @@ class YouTubeActions(unittest.TestCase):
         self.assertEqual(mark_original(self.args("document"), self.api)["state"], "documented")
         self.api.videos.return_value.update.assert_not_called()
         self.api.channels.return_value.list.return_value.execute.return_value = {"items": [{"id": "wrong"}]}
-        with self.assertRaisesRegex(ValueError, "not the requested channel"):
+        with self.assertRaisesRegex(ValueError, "does not provide configured channel"):
             mark_original(self.args("unlisted"), self.api)
 
     def test_notice_preserves_metadata_and_snapshots(self):
@@ -153,6 +153,7 @@ api = Mock()
 api.channels.return_value.list.return_value.execute.return_value = {'items': [{'id': 'channel'}]}
 api.videos.return_value.list.return_value.execute.return_value = {'items': [{'snippet': {'channelId': 'channel'}, 'status': {'privacyStatus': 'private'}}]}
 youtube_audio.service = lambda *a, **kw: api
+youtube_audio.configured_channel = lambda requested=None: 'channel'
 sys.argv = [str(root / 'scripts/youtube-audio.py'), 'mark-original', str(receipt), '--channel-id', 'channel', '--action', 'document', '--reviewed']
 runpy.run_path(sys.argv[0], run_name='__main__')
 ''', encoding="utf-8")

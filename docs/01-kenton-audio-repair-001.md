@@ -47,7 +47,7 @@ python scripts/youtube-audio.py auth upload
 python scripts/youtube-audio.py auth manage
 ```
 
-All operational commands require the expected `--channel-id` (the YouTube channel ID, not its handle). They check the signed-in channel and the video owner. No authorization has been performed as part of implementing these scripts.
+All YouTube commands use root `youtube.json`: Kenton Church EPC (`@kentonchurchepc8338`), channel `UCQv5lUpAVNhfV7RS1Hzbf-Q`. Select that channel during consent, not the personal or Kenton Session channel. Authorization verifies the target before saving its token. Operational commands also check video ownership. `--channel-id` is optional; if supplied it must match the configuration. No authorization has been performed as part of implementing these scripts.
 
 ## 1. Inspect and repair the recording
 
@@ -56,7 +56,7 @@ Use the original OBS recording where available. The YouTube read API retrieves m
 Optional metadata snapshot, using actual IDs:
 
 ```powershell
-python scripts/youtube-audio.py read ORIGINAL_VIDEO_ID --channel-id KENTON_CHANNEL_ID --output work/audio-repair/original.json
+python scripts/youtube-audio.py read ORIGINAL_VIDEO_ID --output work/audio-repair/original.json
 ```
 
 Repair a local recording:
@@ -96,7 +96,7 @@ Save explicit upload metadata as `work/audio-repair/upload-metadata.json`, for e
 Choose the actual service title, description, category, and audience designation; the example's audience/category are not an automatic classification of Kenton content. Nothing is copied blindly from another service.
 
 ```powershell
-python scripts/youtube-audio.py upload work/audio-repair/service-repair/repair.json --metadata work/audio-repair/upload-metadata.json --original-id ORIGINAL_VIDEO_ID --channel-id KENTON_CHANNEL_ID --reviewed
+python scripts/youtube-audio.py upload work/audio-repair/service-repair/repair.json --metadata work/audio-repair/upload-metadata.json --original-id ORIGINAL_VIDEO_ID --reviewed
 ```
 
 The command requires a complete measured repair, unchanged MP4 hash, and explicit listening review. It uploads privately with subscriber notification disabled and saves `upload.json` alongside the report. The original is unchanged. The new upload gets a new video ID/URL; thumbnails, captions, chapters, playlists, comments, views, and website embeds are not migrated by this command.
@@ -111,12 +111,12 @@ No policy is assumed. Choose one explicit action per command after reviewing the
 
 ```powershell
 # Local record only; leaves YouTube unchanged and uses the read grant:
-python scripts/youtube-audio.py mark-original work/audio-repair/service-repair/upload.json --channel-id KENTON_CHANNEL_ID --action document --reviewed
+python scripts/youtube-audio.py mark-original work/audio-repair/service-repair/upload.json --action document --reviewed
 
 # Alternatively choose ONE remote action using the manage grant:
-python scripts/youtube-audio.py mark-original work/audio-repair/service-repair/upload.json --channel-id KENTON_CHANNEL_ID --action notice --reviewed
-python scripts/youtube-audio.py mark-original work/audio-repair/service-repair/upload.json --channel-id KENTON_CHANNEL_ID --action unlisted --reviewed
-python scripts/youtube-audio.py mark-original work/audio-repair/service-repair/upload.json --channel-id KENTON_CHANNEL_ID --action private --reviewed
+python scripts/youtube-audio.py mark-original work/audio-repair/service-repair/upload.json --action notice --reviewed
+python scripts/youtube-audio.py mark-original work/audio-repair/service-repair/upload.json --action unlisted --reviewed
+python scripts/youtube-audio.py mark-original work/audio-repair/service-repair/upload.json --action private --reviewed
 ```
 
 `notice` prepends the replacement URL to the original description while preserving its title, tags, category, language, and existing description. `unlisted` or `private` changes privacy while preserving other writable status fields. Remote actions require the replacement to be processed successfully and public, so the original cannot be hidden while its replacement is still private. A live/upcoming original or scheduled publication requires manual handling.

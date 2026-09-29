@@ -1,5 +1,9 @@
 # Kenton workflow
 
+- YouTube target is root `youtube.json`: Kenton Church EPC (`@kentonchurchepc8338`), `UCQv5lUpAVNhfV7RS1Hzbf-Q`. Never infer a different target from the signed-in account. Personal `UCf_VN9JkxVt21UJheXtRdzw` and Kenton Session `UCRgaPdRqB4C94lUiHwMSNvA` are not the target.
+
+- Setup instructions must be concise, self-contained, and in execution order: numbered actions, exact commands, and a success indication. Do not send the user through several Markdown documents to complete one setup. Keep explanatory/developer detail out of the setup steps.
+
 - Keep root `README.md` as the navigation/folder-map entry point. Keep developer-only fixtures and environments in temporary directories or `work/_archive`, not alongside active jobs. Inventory CLI tests must redirect backup storage into their temporary fixture root. Preserve active work and reviewed outputs when organizing.
 
 - User-approved exception: maintain public YouTube inventory and editorial labels in Git-tracked `data/youtube-videos.json` using `scripts/inventory-youtube.py`. Preserve `local` labels on sync. Keep credentials, recordings, and backups under ignored `work/`; catalog labeling never changes YouTube. See `data/README.md`.

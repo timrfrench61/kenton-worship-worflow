@@ -1,6 +1,9 @@
 {
   "schema": 1,
-  "channel": null,
+  "channel": {
+    "id": "UCQv5lUpAVNhfV7RS1Hzbf-Q",
+    "title": "Kenton Church EPC"
+  },
   "timezone": "America/Los_Angeles",
   "last_synced_at": null,
   "videos": {}

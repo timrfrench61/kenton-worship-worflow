@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .audio_repair import ROOT, WORK
 from .youtube_audio import service
+from .youtube_config import configured_channel
 
 CATALOG = ROOT / "data" / "youtube-videos.json"
 
@@ -81,7 +82,7 @@ def collect(api, old, channel_id=None):
     selected = [c for c in channels if c["id"] == expected] if expected else channels
     if len(selected) != 1:
         choices = ", ".join(c["id"] + " (" + c["snippet"]["title"] + ")" for c in channels)
-        raise ValueError(f"Select an authorized channel with --channel-id. Available: {choices or '(none)'}")
+        raise ValueError(f"Select an authorized channel matching the configured target {expected}. Run auth read again and select Kenton Church EPC. Available: {choices or '(none)'}")
     channel = selected[0]
     if old.get("channel") and old["channel"]["id"] != channel["id"]:
         raise ValueError("Catalog belongs to another channel; do not merge channel inventories.")
@@ -144,8 +145,11 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         catalog, previous = load(args.catalog)
+        target = configured_channel(getattr(args, "channel_id", None))
+        if catalog.get("channel") and catalog["channel"]["id"] != target:
+            raise ValueError("Catalog channel differs from youtube.json; no changes made.")
         if args.command == "sync":
-            updated, count = collect(service("read", args.credentials_dir), catalog, args.channel_id)
+            updated, count = collect(service("read", args.credentials_dir), catalog, target)
             write_catalog(args.catalog, updated, previous)
             print(f"Saved {count} current public videos to {args.catalog.resolve()}. Local labels preserved.")
         elif args.command == "list":

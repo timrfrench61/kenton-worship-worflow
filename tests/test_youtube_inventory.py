@@ -62,6 +62,7 @@ root = Path(sys.argv[1])
 sys.path.insert(0, str(root / 'src'))
 from kenton_workflow import youtube_inventory
 youtube_inventory.ROOT = Path(__file__).parent
+youtube_inventory.configured_channel = lambda requested=None: 'channel'
 sys.argv = [str(root / 'scripts/inventory-youtube.py'), *sys.argv[2:]]
 runpy.run_path(sys.argv[0], run_name='__main__')
 ''')
@@ -86,6 +87,7 @@ from test_youtube_inventory import InventoryTests
 from kenton_workflow import youtube_inventory
 api, _ = InventoryTests().fixture()
 youtube_inventory.ROOT = catalog.parent
+youtube_inventory.configured_channel = lambda requested=None: 'channel'
 youtube_inventory.service = lambda *a, **kw: api
 sys.argv = [str(root / 'scripts/inventory-youtube.py'), '--catalog', str(catalog), 'sync']
 runpy.run_path(sys.argv[0], run_name='__main__')

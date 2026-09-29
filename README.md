@@ -4,6 +4,8 @@ Run all commands from **`C:\repos\kenton-worship-workflow`** (the project root).
 
 ## Current task: September 27 morning and evening audio
 
+YouTube target is configured in `youtube.json`: **Kenton Church EPC**, `@kentonchurchepc8338`, channel `UCQv5lUpAVNhfV7RS1Hzbf-Q`. All YouTube commands use this target; the personal and Kenton Session channels are excluded.
+
 1. Set up read access and inventory the videos: [inventory instructions](data/README.md).
 2. Identify the services in [the catalog](data/youtube-videos.json); save morning/evening labels and proposed `(AUDIO FIXED)` titles.
 3. Repair the local recordings, listen, and upload privately: [audio workflow](docs/01-kenton-audio-repair-001.md).
