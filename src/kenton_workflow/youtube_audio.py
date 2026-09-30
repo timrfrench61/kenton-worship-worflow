@@ -71,7 +71,17 @@ def video(api, video_id: str, channel: str) -> dict:
 
 def repair_file(report_path: Path) -> tuple[dict, Path]:
     report = json.loads(report_path.read_text(encoding="utf-8"))
-    if report.get("state") != "complete" or not report.get("checks") or not all(report["checks"].values()):
+    checks = report.get("checks", {})
+    approved = report.get("acceptance", {})
+    accepted = (report.get("state") == "accepted"
+                and approved.get("listening_approved") is True
+                and set(checks) == {"loudness", "peak", "duration", "source_unchanged"}
+                and all(checks[k] is True for k in ("loudness", "duration", "source_unchanged"))
+                and type(checks["peak"]) is bool
+                and approved.get("waived_checks") == ([] if checks["peak"] else ["peak"]))
+    if accepted and digest(Path(approved["original_report"])) != approved["original_report_sha256"]:
+        raise ValueError("Original repair report changed since acceptance.")
+    if not accepted and (report.get("state") != "complete" or not checks or not all(checks.values())):
         raise ValueError("Repair is incomplete or failed measurement checks.")
     path = Path(report["output"])
     if not path.is_file() or digest(path) != report["output_sha256"]:
@@ -86,7 +96,14 @@ def upload(args, api, media_factory) -> dict:
     receipt = args.report.parent / "upload.json"
     if receipt.exists():
         raise ValueError(f"Upload already attempted. Inspect {receipt} and YouTube Studio before another upload; automatic retries could duplicate it.")
-    metadata = json.loads(args.metadata.read_text(encoding="utf-8"))
+    channel_check(api, args.channel_id)
+    old = video(api, args.original_id, args.channel_id)
+    if args.metadata:
+        metadata = json.loads(args.metadata.read_text(encoding="utf-8"))
+    else:
+        metadata = {"title": args.title, "description": old["snippet"].get("description", ""),
+                    "categoryId": old["snippet"]["categoryId"],
+                    "madeForKids": old["status"].get("selfDeclaredMadeForKids", old["status"].get("madeForKids"))}
     for key in ("title", "description", "categoryId", "madeForKids"):
         if key not in metadata:
             raise ValueError(f"Upload metadata is missing {key}.")
@@ -96,8 +113,6 @@ def upload(args, api, media_factory) -> dict:
         raise ValueError("Description must be text; madeForKids must be true or false.")
     if not str(metadata["categoryId"]).isdigit():
         raise ValueError("categoryId must be a YouTube numeric category ID.")
-    channel_check(api, args.channel_id)
-    old = video(api, args.original_id, args.channel_id)
     if old["snippet"].get("liveBroadcastContent") in ("live", "upcoming"):
         raise ValueError("Original must be a completed recording, not a live or scheduled broadcast.")
     body = {"snippet": {"title": metadata["title"], "description": metadata["description"],
@@ -184,7 +199,9 @@ def main(argv: list[str] | None = None) -> int:
     read.add_argument("--output", type=Path, required=True)
     up = sub.add_parser("upload", help="Upload a measured, reviewed MP4 privately")
     up.add_argument("report", type=Path)
-    up.add_argument("--metadata", type=Path, required=True)
+    metadata_group = up.add_mutually_exclusive_group(required=True)
+    metadata_group.add_argument("--metadata", type=Path)
+    metadata_group.add_argument("--title", help="New title; retain original description, category, and audience setting")
     up.add_argument("--original-id", required=True)
     up.add_argument("--reviewed", action="store_true")
     mark = sub.add_parser("mark-original", help="Explicitly choose how to mark the previous video")

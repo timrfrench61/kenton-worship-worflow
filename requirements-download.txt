@@ -1,0 +1,2 @@
+# Optional YouTube media download; separate from Google OAuth dependencies.
+yt-dlp[default]>=2026.3.17

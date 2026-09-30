@@ -10,6 +10,21 @@ Scope: picture replacement and slides. For audio-only repair, use [the audio wor
 
 **Confirmed September 28, 2026: use the HSWTL file's picture and keep the service audio.** Praise Band and Piano slides also keep service audio. With these choices the renderer uses the original soundtrack continuously, without cutting it at picture-edit boundaries. Output audio is encoded as AAC, so this preserves the performance and timing, not the compressed source bytes.
 
+## Listening review and workflow design backlog — September 29, 2026
+
+The user listened to both September 27 audio repairs and reported that both sound fine. Morning (`MN8xU4uvTUg`) measured -18.02 LUFS after repair; evening (`1Yx0hczikNg`) measured -17.95 LUFS. Both passed automated loudness, peak, duration, and source-integrity checks. Listening review is complete with the limitations below; this does not mean the proposed picture edits are complete or that either file has been uploaded.
+
+| Item | User observation / intended outcome | Next action and dependency | Status |
+| --- | --- | --- | --- |
+| Evening off-microphone speech | Some speech remains too quiet after whole-service normalization. | Identify exact intervals and assess whether selective gain improves intelligibility without excessive room noise. Establish microphone use/coverage for future services. No claim that missing detail can be recovered. | Deferred; needs timestamps and listening assessment. |
+| Praise Band recording mix | User needs to check the mix before recording; the current mixed recording cannot fix the instrument/vocal balance. | User performs a recorded mix check before each service and listens to the recording feed, adjusting balance before recording. | Future operating practice; current mix limitation accepted. |
+| How Should We Then Live picture replacement | User is considering cutting out the filmed playback picture and inserting the matching video, possibly using DaVinci Resolve. | Supply the matching episode file and exact service/source intervals; choose Resolve or the existing explicit-plan renderer, align picture, and review every join and synchronization. Keep service audio under the previously confirmed choice unless the user explicitly changes it. | Deferred; assets, intervals, and editor choice pending. |
+| Morning Praise Band camera coverage | When no camera operator is available, show prepared performance slides during missed camera coverage. A duotone sketch treatment is a possible style. | Select band performance photos/stills, prepare a small style sample for user review, then create approved slides and identify insertion intervals. Keep service audio. | Deferred; source images, style approval, and intervals needed. |
+| Piano camera coverage | Use similarly prepared Piano slides when the camera cannot follow the performance. | Select piano photos/stills and review the proposed duotone/sketch treatment alongside the band slides; identify insertion intervals. Keep service audio. | Deferred; source images, style approval, and intervals needed. |
+| Piano recording tone | User finds the piano mix far too tinny. Loudness normalization did not resolve its tone. | Check the piano recording feed, microphone/pickup placement, and EQ during a recorded sound check; user evaluates changes before the next recording. Do not apply an untested whole-service EQ correction to these repairs. | Deferred; requires access to the recording setup and a sound check. |
+
+These are design/production backlog items, not completed edits or an instruction to rerender the reviewed files now. Any later picture or audio changes create a new version that needs its own final listening/viewing review. Keep this backlog here rather than creating another setup document.
+
 ## Plan and responsibilities
 
 Use a local original recording, the matching HSWTL source file, and supplied slide images. AI or the user identifies the exact intervals where the camera picture needs replacing. Python validates and renders those explicit decisions. It does not guess when a musician is off camera, choose an episode, generate slide content, or infer synchronization from similar-looking frames.
