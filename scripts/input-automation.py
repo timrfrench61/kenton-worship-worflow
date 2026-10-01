@@ -72,9 +72,6 @@ def select_previous(weeks, sunday):
 def copy_verified(source, destination):
     destination.parent.mkdir(parents=True, exist_ok=True)
     expected = file_hash(source)
-    if destination.exists():
-        if destination.is_file() and file_hash(destination) == expected:
-            return
     with tempfile.NamedTemporaryFile(dir=destination.parent, delete=False) as stream:
         temporary = Path(stream.name)
     try:
@@ -122,15 +119,36 @@ def prepare(sunday, source, weeks=None, previous=None):
     planned += [(p, previous_copy / p.relative_to(previous)) for p in list_files(previous)]
     if len(planned) == len(books):
         raise ValueError(f'Last week has no copyable files: "{previous}"')
-    expected_previous = {p for _, p in planned if previous_copy in p.parents}
-    if previous_copy.exists():
-        extras = [p for p in list_files(previous_copy) if p not in expected_previous]
-        if extras:
-            log(f'ATTENTION: {len(extras)} other files in DESKTOP/previous were retained; continuing refresh.')
     inventory = [f'Week-set source: {weeks}', f'Last week selected: {previous}', '']
     inventory += [str(p.relative_to(weeks)) for p in list_files(weeks)]
-    for original, target in planned:
+    # Finish copying before replacing the previous set, so a failed read leaves it intact.
+    archive = ROOT / 'work/_archive/input-refresh'
+    archive.mkdir(parents=True, exist_ok=True)
+    batch = Path(tempfile.mkdtemp(prefix='refresh-', dir=archive))
+    staged = batch / 'incoming'
+    staged.mkdir()
+    for original, target in planned[len(books):]:
+        copy_verified(original, staged / target.relative_to(previous_copy))
+    for original, target in planned[:len(books)]:
         copy_verified(original, target)
+        log(f'Copied "{original}" -> "{target}"')
+    retained = batch / 'previous'
+    if previous_copy.exists():
+        if previous_copy.is_symlink() or previous_copy.resolve() != desktop.resolve() / 'previous':
+            raise ValueError('Previous working folder must not be a link or junction.')
+        previous_copy.rename(retained)
+    try:
+        staged.rename(previous_copy)
+    except OSError:
+        if retained.exists():
+            retained.rename(previous_copy)
+        raise
+    if retained.exists():
+        log(f'Archived prior working templates: "{retained}"')
+    else:
+        batch.rmdir()
+    log(f'Replaced "{previous_copy}" with {len(planned) - len(books)} files from "{previous}"')
+    for original, target in planned[len(books):]:
         log(f'Copied "{original}" -> "{target}"')
     (desktop / 'week-sets.txt').write_text('\n'.join(inventory) + '\n', encoding='utf-8')
     state.write_text(json.dumps({'date': str(sunday), 'complete': True,

@@ -1,0 +1,36 @@
+{
+  "credentials_file": "work/credentials/application.json",
+  "bible": {
+    "base_url": "https://rest.api.bible/v1",
+    "bible_id": "78a9f6124f344018-01",
+    "name": "New International Version 2011",
+    "api_key_env": "API_BIBLE_KEY"
+  },
+  "word_study": {
+    "verses_per_testament_per_word": 6,
+    "page_size": 50,
+    "max_pages_per_testament": 2,
+    "timeout_seconds": 30,
+    "cache_directory": "work/research/api-bible-cache",
+    "ranges": {
+      "old_testament": "GEN.1.1-MAL.4.6",
+      "new_testament": "MAT.1.1-REV.22.21"
+    }
+  },
+  "llm": {
+    "provider": "none",
+    "note": "Reserved for an optional future ranking adapter. Research currently uses Python only; no LLM calls are implemented.",
+    "profiles": {
+      "gemini": {
+        "base_url": "https://generativelanguage.googleapis.com/v1beta",
+        "model": "gemini-2.5-flash-lite",
+        "api_key_env": "GEMINI_API_KEY"
+      },
+      "openai": {
+        "base_url": "https://api.openai.com/v1",
+        "model": "gpt-5-mini",
+        "api_key_env": "OPENAI_API_KEY"
+      }
+    }
+  }
+}

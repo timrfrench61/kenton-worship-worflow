@@ -127,6 +127,74 @@ def prepare(service, content, folders):
     return chosen
 
 
+def prepare_named(service, content, template_folder, authored_folders):
+    """Use the user's named layout; authored documents supply content only."""
+    filename = 'word_study_template.docx' if service['kind'] == 'word-study' else 'discussion_template.docx'
+    template = Path(template_folder) / filename
+    if not template.is_file():
+        raise ValueError(f'Missing editable template: "{template}". A PDF is a visual reference, not a Word template.')
+    read_template(template, service['kind'])
+    if content.get('handout_content'):
+        validate(content['handout_content'], service)
+    else:
+        # Never interpret the old example text in the layout as this week's teaching.
+        try:
+            authored = prepare(service, {}, authored_folders)
+        except ValueError as error:
+            if not str(error).startswith('No matching authored Word handout.'):
+                raise
+            subject = service['sermon'] if service['kind'] == 'word-study' else service['topic']
+            words = ', '.join(service.get('study_words', []))
+            detail = f' Study words: {words}.' if words else ''
+            raise ValueError(f'Template found: "{template}". Missing current authored teaching content for '
+                             f'{subject}.{detail} AI/Codex or the user must supply that content; '
+                             'the template itself does not need replacing.') from error
+        if service['kind'] == 'word-study':
+            content['_word_content_source'] = authored
+        else:
+            content['handout_content'] = discussion_content(authored)
+            validate(content['handout_content'], service)
+    return template
+
+
+def discussion_content(source):
+    """Extract existing authored teaching verbatim for mapping into a named layout."""
+    _, body, slots, identity = read_template(source, 'discussion')
+    blocks = list(body)
+    def lines(block):
+        return ''.join('\n' if node.tag == W+'br' else (node.text or '')
+                       for node in block.iter() if node.tag in (W+'t', W+'br'))
+    data = dict(identity, presenter=lines(blocks[2]).split('  ')[0],
+                purpose=lines(blocks[3]).removeprefix('Purpose:').strip(),
+                focus=lines(blocks[slots['focus']]).removeprefix('AS YOU WATCH OR READ').strip())
+    for section in ('points', 'questions'):
+        data[section] = []
+        for i in slots[section]:
+            value = lines(blocks[i])
+            lead = ''
+            for run in blocks[i].findall(W+'r'):
+                if run.find(W+'rPr/'+W+'b') is None:
+                    break
+                lead += lines(run)
+            if not lead.strip() or not value.startswith(lead):
+                split = re.match(r'(.+?[.!?])(?:\s+|$)(.*)', value, re.S)
+                lead = split[1] if split else value
+            data[section].append({'lead': lead.rstrip(), 'text': value[len(lead):].lstrip()})
+    data['scripture'] = []
+    pending = ''
+    for i in slots['scripture']:
+        value = lines(blocks[i]).strip()
+        quote, separator, ref = value.rpartition('—')
+        if separator:
+            data['scripture'].append({'reference': ref.strip(), 'text': (pending + quote).strip()})
+            pending = ''
+        else:
+            pending += value + '\n'
+    if pending or not data['scripture']:
+        raise ValueError(f'Cannot separate the authored Scripture quotations and references in "{source}".')
+    return data
+
+
 def validate(data, service):
     """Validate the explicit author-to-assembler handoff before creating any file."""
     def required(obj, names):
@@ -147,8 +215,10 @@ def validate(data, service):
         required(data, ('series', 'episode', 'episode_title', 'presenter', 'purpose', 'focus'))
         if not matches(data, service):
             raise ValueError('Authored episode/series/title does not match the planner.')
-        records('points', ('lead', 'text'), 5)
-        records('questions', ('lead', 'text'), 5)
+        for section in ('points', 'questions'):
+            for item in records(section, ('lead',), 5):
+                if not isinstance(item.get('text'), str):
+                    raise ValueError(f'Authored {section} needs text (which may be empty).')
         records('scripture', ('reference', 'text'))
     else:
         required(data, ('title', 'passage_reference', 'translation'))
@@ -172,7 +242,7 @@ def verified_word_content(service, content, lookup):
     """
     data = deepcopy(content.get('handout_content'))
     if not data:
-        _, body, slots, identity = read_template(content['_handout_source'], 'word-study')
+        _, body, slots, identity = read_template(content.get('_word_content_source', content['_handout_source']), 'word-study')
         if not matches(identity, service):
             raise ValueError('Handout source no longer matches the planner.')
         blocks = list(body)

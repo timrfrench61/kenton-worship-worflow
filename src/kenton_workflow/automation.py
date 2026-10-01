@@ -228,7 +228,7 @@ def confession(catalog, reference):
 def parse_biblegateway(payload):
     """Extract Scripture verse spans, excluding notes, headings and cross references."""
     from lxml import html
-    doc = html.fromstring(payload)
+    doc = html.fromstring(payload, parser=html.HTMLParser(encoding='utf-8'))
     containers = doc.xpath('//*[contains(concat(" ", normalize-space(@class), " "), " passage-content ")]')
     if len(containers) != 1:
         raise ValueError('Bible Gateway did not return one Scripture passage. Supply the reading in content.json.')
@@ -270,11 +270,18 @@ def bible_reading(reference, cache, offline=False):
     try:
         with urlopen(Request(url, headers={'User-Agent': 'KentonWorshipWorkflow/1.0'}), timeout=25) as response:
             payload = response.read(2_000_000)
-        page = html.fromstring(payload)
+        page = html.fromstring(payload, parser=html.HTMLParser(encoding='utf-8'))
         headings = page.xpath('//*[contains(concat(" ", normalize-space(@class), " "), " passage-display ")]')
-        if len(headings) != 1 or 'New International Version' not in headings[0].text_content():
+        if not headings or any('New International Version' not in heading.text_content() for heading in headings):
             raise ValueError('The returned page is not labeled New International Version.')
-        lines, verses = parse_biblegateway(payload)
+        containers = page.xpath('//*[contains(concat(" ", normalize-space(@class), " "), " passage-content ")]')
+        if len(containers) != len(headings):
+            raise ValueError('Bible Gateway passage sections do not match the translation headings.')
+        lines, verses = [], []
+        for container in containers:
+            section_lines, section_verses = parse_biblegateway(html.tostring(container, encoding='utf-8'))
+            lines.extend(section_lines)
+            verses.extend(section_verses)
     except Exception as error:
         raise ValueError(f'Could not read NIV {reference} from Bible Gateway: {error}') from error
     save(target, {'reference': reference, 'translation': 'NIV', 'url': url,
@@ -358,6 +365,8 @@ def plain_plan(raw):
             'kind': 'discussion' if s['program_kind'] == 'video' else 'word-study',
             'call_to_worship': s['call_to_worship']['value'],
             'prayer_of_confession': s['prayer_of_confession']['value'],
+            'prayer_of_confession_text': s.get('prayer_of_confession_text', {}).get('value'),
+            'has_prayer_text_row': 'prayer_of_confession_text' in s,
             'praise_songs': [v['value'] for v in s['praise_songs'] if v['value']],
             'hymns': [v['value'] for v in s['hymns'] if v['value']],
             'study_words': [v.strip() for v in re.split(r'[,;\n]+', str(s.get('study_words', {}).get('value') or '')) if v.strip()],
@@ -580,10 +589,20 @@ def bulletin(template, service, content, day, destination):
                 if setting is None:
                     setting = etree.SubElement(props, W+tag)
                 setting.set(W+'val', value)
-        scripture = matching('SCRIPTURE')
+        scripture = [p for p in ps if p in matching('SCRIPTURE') or
+                     p.xpath('.//w:bookmarkStart[@w:name="KentonScripture"]', namespaces=NS)]
         if len(scripture) > 1 or (service['additional_reading'] and not scripture):
-            content.setdefault('_layout_attention', []).append('Optional Otread has no unique template slot; retained in temporary.json for review.')
+            raise ValueError('Scripture reference cannot be placed: template needs exactly one SCRIPTURE paragraph. Restore it from an approved bulletin; this bulletin was not generated.')
         elif scripture:
+            # Keep the mapping when a week has no reading; a blank printed line
+            # must not erase the slot needed when this document is reused.
+            if not scripture[0].xpath('.//w:bookmarkStart[@w:name="KentonScripture"]', namespaces=NS):
+                ids = document.xpath('//w:bookmarkStart/@w:id', namespaces=NS)
+                identity = str(max([int(v) for v in ids if v.isdigit()] + [0]) + 1)
+                start = etree.Element(W+'bookmarkStart', {W+'id': identity, W+'name': 'KentonScripture'})
+                end = etree.Element(W+'bookmarkEnd', {W+'id': identity})
+                scripture[0].append(start)
+                scripture[0].append(end)
             set_text(scripture[0], 'SCRIPTURE — ' + service['additional_reading'] if service['additional_reading'] else '')
         sermon_options = matching('SERMON') + matching('VIDEO PRESENTATION')
         if len(sermon_options) != 1:
@@ -680,10 +699,10 @@ def gather(root, day, offline, chords):
     planning = Path(root) / 'work/planning'
     record = {'planner': str(workbook_file(planning, 'recent logs')),
               'catalog': str(workbook_file(planning, 'song lists')),
-              'templates': str(p['desktop'] / 'previous')}
+              'templates': str(Path(root) / 'work/templates')}
     for key in ('planner', 'catalog'):
         log(root, f'Reading planning copy: "{record[key]}"')
-    log(root, f'Reading previous-week templates: "{record["templates"]}"')
+    log(root, f'Reading named templates: "{record["templates"]}"')
     raw = extract_week(record['planner'], record['catalog'], day)
     plan = plain_plan(raw)
     save(p['desktop'] / 'temporary.json', plan)
@@ -728,8 +747,10 @@ def gather(root, day, offline, chords):
             except (OSError, ValueError, KeyError) as error:
                 issues.append(f'{name} {label}: {error}')
                 return None
-        e['template'] = attempt('template', lambda: find_template(Path(record['templates']), name))
-        e['prayer'] = attempt('prayer', lambda: confession(record['catalog'], s['prayer_of_confession']))
+        bulletin_folder = Path(record['templates']) / 'standard'
+        e['template'] = attempt('template', lambda: find_template(bulletin_folder, name))
+        e['prayer'] = (s.get('prayer_of_confession_text') if s.get('has_prayer_text_row')
+                       else attempt('prayer', lambda: confession(record['catalog'], s['prayer_of_confession'])))
         if e.get('call_lines'):
             if e.get('translation') != 'NIV' or norm(e.get('call_reference')) != norm(s['call_to_worship']):
                 issues.append(f'{name}: supplied call_lines need NIV and the matching call_reference.')
@@ -739,8 +760,8 @@ def gather(root, day, offline, chords):
             e['call_lines'] = attempt('call to worship', lambda: bible_reading(s['call_to_worship'], p['desktop'] / 'scripture-cache', offline))
         sources = imported.get('planning_sources', [])
         worship = Path(sources[0]).parent if sources else PLANNING_ROOT
-        e['_handout_source'] = attempt('handout', lambda: handouts.prepare(
-            s, e, [Path(record['templates']), worship / '_Handouts']))
+        e['_handout_source'] = attempt('handout', lambda: handouts.prepare_named(
+            s, e, Path(record['templates']), [worship / '_Handouts']))
         if e['_handout_source']:
             log(root, f'Reading authored handout/template: "{e["_handout_source"]}"')
             if s['kind'] == 'word-study':
@@ -799,13 +820,44 @@ def finish_update_stage(root, stage, complete, manifest):
     return str(destination)
 
 
-def update_automation(root, day, check=False, offline=False, chords=None):
+def archive_older_generated(root, day):
+    """Keep only this service date's generated documents in the active folders."""
+    root = Path(root)
+    issues = []
+    archive = root / 'work/_archive/previous-generated' / datetime.now().strftime('%Y%m%d-%H%M%S-%f')
+    for name in ('desktop', 'output'):
+        folder = checked_path(root / 'work' / name)
+        if not folder.exists():
+            continue
+        for path in folder.iterdir():
+            match = re.fullmatch(r'(\d{4}-\d{2}-\d{2})-(morning|evening)-(bulletin|word-study|discussion|chords-index|praise-chords)\.(docx|pdf)', path.name)
+            if match and match[1] != day and path.is_file():
+                target = checked_path(archive / name / path.name)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    checked_path(path).rename(target)
+                    log(root, f'Archived previous generated document: "{target}"')
+                except PermissionError:
+                    issues.append(f'Close "{path}" and rerun update so the previous document can be archived.')
+    return issues
+
+
+def update_automation(root, day, check=False, offline=False, chords=None, bulletin_templates=None):
     log(root, f'UPDATE — {day}')
     chords = Path(chords) if chords else None
     p = paths(root, day)
     status = Path(root) / 'work/build.json'
     save(status, {'date': day, 'complete': False})
     p, record, plan, prepared, issues = gather(root, day, offline, chords)
+    if bulletin_templates is not None:
+        for name in SERVICES:
+            issues = [issue for issue in issues if not issue.startswith(f'{name} template:')]
+            try:
+                prepared[name]['template'] = find_template(Path(bulletin_templates), name)
+                log(root, f'{name.capitalize()} bulletin template: "{prepared[name]["template"]}"')
+            except (OSError, ValueError) as error:
+                prepared[name]['template'] = None
+                issues.append(f'{name} template: {error}')
     report = p['desktop'] / 'needs-attention.txt'
     def report_attention():
         save(report, 'Update attention items\n\n' + ('\n'.join('- ' + s for s in issues) if issues else 'None.') + '\n')
@@ -816,6 +868,9 @@ def update_automation(root, day, check=False, offline=False, chords=None):
     if check:
         log(root, 'Input check finished. Attention items are advisory; update will attempt each output independently.')
         return 0
+    for issue in archive_older_generated(root, day):
+        issues.append(issue)
+        log(root, 'ATTENTION: ' + issue)
     if (Path(root) / 'website.json').exists():
         try:
             draft = website.prepare(root, day, plan)
@@ -882,8 +937,9 @@ def update_automation(root, day, check=False, offline=False, chords=None):
             except OSError as error:
                 if label not in failures:
                     failures.append(label)
-                message = (f'{label}: cannot replace an open review file: {error}. '
-                           f'Close the file and rerun update. New files are retained at {job}.')
+                message = (f'{label}: Windows could not replace the review file: {error}. '
+                           'A PDF/Word viewer (including a background tab), file permissions, or a read-only file may prevent replacement. '
+                           f'New files are retained at {job}; see the final archive location below.')
                 issues.append(message)
                 log(root, 'ATTENTION: ' + message + ' Continuing other outputs.')
 
@@ -907,7 +963,7 @@ def update_automation(root, day, check=False, offline=False, chords=None):
 
         def make_handout(folder):
             if not e.get('_handout_source'):
-                raise ValueError('Needs matching authored teaching material and its Word template; see handout attention above.')
+                raise ValueError('Handout was not generated; see the specific template/content attention above.')
             target = folder / f'{day}-{name}-{s["kind"]}.docx'
             handout(s, e, day, target)
             pdf = export_word(target)
@@ -1026,6 +1082,9 @@ def main(stage, argv=None):
         parser.add_argument('--check', action='store_true', help='List missing inputs without generating documents.')
         parser.add_argument('--offline', action='store_true', help='Use supplied/cached Scripture without contacting Bible Gateway.')
         parser.add_argument('--chords', type=Path, help='Read-only praise-chords source folder.')
+        template_options = parser.add_mutually_exclusive_group()
+        template_options.add_argument('--communion', action='store_true', help='Use work/templates/communion for both bulletins; otherwise use work/templates/standard.')
+        template_options.add_argument('--bulletin-templates', type=Path, help='Use an explicitly selected folder containing one morning and one evening bulletin DOCX.')
     else:
         parser.add_argument('--website', action='store_true', help='Also apply reviewed panels to the configured local website project after Drive publication.')
         parser.add_argument('--website-only', action='store_true', help='Apply only reviewed panels to the local website project; no Drive publication.')
@@ -1048,6 +1107,8 @@ def main(stage, argv=None):
         if stage == 'input':
             return input_automation(ROOT, day.isoformat(), args.previous_week) or 0
         if stage == 'update':
+            if args.website_only and (args.communion or args.bulletin_templates):
+                raise ValueError('Bulletin template options cannot be used with --website-only.')
             if args.website_only:
                 if args.check:
                     raise ValueError('Use --website-only without --check to prepare the review draft.')
@@ -1059,7 +1120,8 @@ def main(stage, argv=None):
                 plan = plain_plan(extract_week(planner, catalog, day.isoformat()))
                 log(ROOT, f'Website panels ready for review: {website.prepare(ROOT, day.isoformat(), plan)}')
                 return 0
-            return update_automation(ROOT, day.isoformat(), args.check, args.offline, args.chords)
+            template_folder = ROOT / 'work/templates/communion' if args.communion else args.bulletin_templates
+            return update_automation(ROOT, day.isoformat(), args.check, args.offline, args.chords, template_folder)
         if args.website_only:
             if args.force:
                 raise ValueError('--force applies only to Drive week-sets; website edits are protected from overwrite.')

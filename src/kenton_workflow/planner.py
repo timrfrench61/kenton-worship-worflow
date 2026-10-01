@@ -77,8 +77,8 @@ def extract_week(planner_path, catalog_path, requested_date):
                 raise ValueError(f'Missing planner field {label!r}.')
             positions[logical_row] = matches[occurrence]
         issues = []
-        def value(row):
-            row = positions.get(row, row)
+        def value(row, physical=False):
+            row = row if physical else positions.get(row, row)
             if row is None:
                 return {'value': None, 'source': {'workbook': paths[0].name, 'sheet': 'planner', 'cell': None}}
             cell = sheet[f'{column}{row}']
@@ -106,7 +106,7 @@ def extract_week(planner_path, catalog_path, requested_date):
                 matches = indexes[tab].get(song_key(item['value'], tab), []) if item['value'] else []
                 item['catalog_matches'] = [{'workbook': paths[1].name, 'sheet': tab, 'cell': c} for c in matches]
                 if item['value'] and len(matches) != 1:
-                    issues.append(f'{column}{row}: expected one {tab} name match; found {len(matches)}')
+                    issues.append(f"{item['source']['cell']}: expected one {tab} name match; found {len(matches)}")
                 result.append(item)
             return result
         def service(sermon, topic, call, confession, praise, hymns):
@@ -117,6 +117,20 @@ def extract_week(planner_path, catalog_path, requested_date):
                     'praise_songs': songs(praise, 'Praise'), 'hymns': songs(hymns, 'Hymns')}
         morning = service(2, 3, 5, 6, range(7, 11), range(11, 14))
         evening = service(15, 16, 18, 19, range(20, 24), range(24, 33))
+        prayer_rows = set()
+        for service_record, start, end in ((morning, 2, positions[15]),
+                                            (evening, positions[15], sheet.max_row + 1)):
+            matches = [row for row in label_rows.get('pofc-text', []) if start <= row < end]
+            if len(matches) > 1:
+                raise ValueError(f'Duplicate PofC-text rows in planner service starting at row {start}.')
+            if matches:
+                row = matches[0]
+                prayer_rows.add(row)
+                cell = sheet[f'{column}{row}']
+                service_record['prayer_of_confession_text'] = value(row, physical=True)
+                if cell.data_type == 'f' or not isinstance(cell.value, str) or not cell.value.strip():
+                    issues.append(f'planner!{column}{row}: PofC-text needs explicit prayer text.')
+                    service_record['prayer_of_confession_text']['value'] = None
         additional = [{'label': 'Otread', **value(row)} for row in (4, 14)]
         for entry in additional:
             if entry['value']:
@@ -125,7 +139,7 @@ def extract_week(planner_path, catalog_path, requested_date):
         for service_record in (morning, evening):
             service_record['study_words'] = {'value': None, 'source': None}
         for row in range(2, sheet.max_row + 1):
-            if row not in positions.values() and sheet[f'{column}{row}'].value is not None:
+            if row not in positions.values() and row not in prayer_rows and sheet[f'{column}{row}'].value is not None:
                 raw_value = sheet[f'{column}{row}'].value
                 label_key = re.sub(r'[^a-z]', '', str(sheet[f'A{row}'].value).casefold())
                 if label_key in ('studywords', 'mstudywords', 'estudywords'):
