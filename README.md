@@ -69,6 +69,24 @@ python scripts/research-word-study.py --passage "Matthew 5:8" --words Pure heart
 
 Success prints **Research saved** and creates readable Markdown alongside the JSON. Use a fresh output filename for each run. Settings are centralized in `application.json`; the API key is in ignored `work/credentials/application.json` or `API_BIBLE_KEY`. This uses standard Python and makes no LLM calls. The results supply research for AI/user selection, not a completed handout. See [endpoint development](docs/10-bible-endpoints.md) for configuration and optional model choices.
 
+To rank those candidates by meaning with Gemini 3.5 Flash-Lite, configure the `gemini` key in `work/credentials/application.json`, then run:
+
+```powershell
+python scripts/rank-word-study.py --input work/research/2026-10-04-word-study-six-per-testament.json --output work/research/2026-10-04-word-study-gemini-ranked.json
+```
+
+Success prints **Ranked research saved**. Its Markdown shows the top three full verses per Testament per word, with the other three references on a single **See also...** line. Update now consumes the latest matching dated ranked JSON automatically. The Word handout uses three full verses in each Testament column and lists the other three references under **See also...**, preserving the current DOCX formatting. All six remain in the research.
+
+To regenerate the current research, ranking, and documents, run these commands in order (each command is one PowerShell line):
+
+```powershell
+python scripts/research-word-study.py --passage "Matthew 5:8" --words Pure Heart See God --output work/research/2026-10-04-word-study-api-bible.json --force
+python scripts/rank-word-study.py --input work/research/2026-10-04-word-study-api-bible.json --output work/research/2026-10-04-word-study-gemini-revised.json --force
+python scripts/update-automation.py --communion --force
+```
+
+Success creates `work/output/2026-10-04-morning-word-study.docx` and its one-page PDF. Research/ranking replacements archive prior files under `work/_archive/research`. Update rebuilds from the current matching research without another LLM call; omit `--communion` for a standard Sunday.
+
 ### Website panels only
 
 1. Prepare the website draft:
@@ -205,3 +223,7 @@ Church content, credentials, recordings, and local backups stay under Git-ignore
 | Upload stopped or its outcome is unclear | Check the saved receipt and YouTube Studio before retrying. |
 
 Developer verification procedures are in [tests/README.md](tests/README.md). Keep test fixtures and environments in temporary folders or `work/_archive`, away from active review files.
+
+Template generation rules and validation steps live beside the templates in [work/templates/GENERATION-PLAN.md](work/templates/GENERATION-PLAN.md). Template formatting controls generation; layout failures are reported rather than silently changing fonts or verse counts.
+
+Current word-count rule: three study words print three full verses per Testament per word; four study words print two. Remaining ranked references use the See also row. Configure `word_study.handout_full_verses_by_word_count` in `application.json`; see `work/templates/GENERATION-PLAN.md`.

@@ -14,6 +14,7 @@ class WordResearchTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / 'scripts').mkdir()
+            shutil.copyfile(repo / 'scripts/_research_output.py', root / 'scripts/_research_output.py')
             shutil.copyfile(repo / 'scripts/research-word-study.py', root / 'scripts/research-word-study.py')
             shutil.copyfile(repo / 'application.json', root / 'application.json')
             (root / 'sitecustomize.py').write_text('''
@@ -59,6 +60,9 @@ urllib.request.urlopen = fake
             self.assertTrue((root / 'work/result.md').exists())
             rerun = subprocess.run(command, env=env, capture_output=True, text=True)
             self.assertEqual(rerun.returncode, 1)
+            forced = subprocess.run(command + ['--force'], env=env, capture_output=True, text=True)
+            self.assertEqual(forced.returncode, 0, forced.stdout + forced.stderr)
+            self.assertEqual(len(list((root / 'work/_archive/research').glob('*/result.json'))), 1)
             config = json.loads((root / 'application.json').read_text())
             config['word_study']['cache_directory'] = 'work/short-cache'
             (root / 'application.json').write_text(json.dumps(config))

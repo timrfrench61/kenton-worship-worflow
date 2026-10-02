@@ -308,7 +308,7 @@ a.gather, a.export_word = gather, export
         build = json.loads((fixture / 'work/build.json').read_text())
         self.assertFalse(build['complete'])
         self.assertIn('morning handout', build['failed_outputs'])
-        self.assertTrue(any('must fit on one page' in note for note in build['attention']))
+        self.assertTrue(any('current requirement is one' in note for note in build['attention']))
         self.assertIn('2026-09-27-evening-discussion.pdf', build['files'])
 
 

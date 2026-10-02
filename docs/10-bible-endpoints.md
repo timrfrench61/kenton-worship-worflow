@@ -107,7 +107,7 @@ Run from `C:\repos\kenton-worship-workflow` after setting `$env:API_BIBLE_KEY` w
 python scripts/research-word-study.py --passage "Matthew 5:8" --words Pure heart see God --output work/research/2026-10-04-word-study-api-bible.json
 ```
 
-Success prints **Research saved**. The script uses Python's standard library; no additional packages are needed. Use a new output filename for another run; existing research is preserved. It reads the key from the environment and does not put it into saved research or request URLs.
+Success prints **Research saved**. The script uses Python's standard library; no additional packages are needed. Use a new output filename for another run; existing research is preserved unless --force is supplied; forced replacements are archived. It reads the key from the environment and does not put it into saved research or request URLs.
 
 The October 1 live run retrieved the main passage and these search results:
 
@@ -145,7 +145,7 @@ Official reference: [API.Bible search documentation](https://docs.api.bible/guid
    python scripts/research-word-study.py --passage "Matthew 5:8" --words Pure heart see God --output work/research/2026-10-04-word-study-six-per-testament.json
    ```
 
-2. Success prints **Research saved**, with six results in each Testament for each word. Read the matching `.md` file in `work/research`; the script now writes both Markdown and JSON. Choose a new output filename for another run because existing research is preserved.
+2. Success prints **Research saved**, with six results in each Testament for each word. Read the matching `.md` file in `work/research`; the script now writes both Markdown and JSON. Choose a new output filename for another run because existing research is preserved unless --force is supplied; forced replacements are archived.
 
 The live run verified all eight groups: Pure, heart, see, and God each have six Old Testament and six New Testament entries. These 48 entries are a research pool, not a one-page handout. A verse may appear under more than one word; duplicates within a word's Testament group are removed.
 
@@ -153,7 +153,7 @@ The implementation uses only standard Python libraries. It searches explicit Tes
 
 ### Central application configuration
 
-`application.json` contains the Bible endpoint, NIV ID, research counts, pagination limits, timeout, cache location, and optional LLM profiles. Credentials are read from the ignored `work/credentials/application.json` using the keys `api_bible`, `gemini`, and `openai`. The corresponding environment variables (`API_BIBLE_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`) can override those values when an adapter uses them. The Bible adapter is implemented; LLM adapters are not yet implemented.
+`application.json` contains the Bible endpoint, NIV ID, research counts, pagination limits, timeout, cache location, and optional LLM profiles. Credentials are read from the ignored `work/credentials/application.json` using the keys `api_bible`, `gemini`, and `openai`. The corresponding environment variables (`API_BIBLE_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`) can override those values when an adapter uses them. The Bible adapter and explicit Gemini ranking command are implemented.
 
 The existing API.Bible key has been placed in that local credentials file. It remains in the original test examples above as requested. Research files and request URLs do not contain the key. Cached endpoint responses stay under `work/research/api-bible-cache`.
 
@@ -164,8 +164,41 @@ Optional CLI overrides are `--config`, `--count` (per Testament per word), and `
 - **Gemini 2.5 Flash-Lite** is a practical first option for drafting reference selections: its API has a free tier subject to account availability and quotas. Google's pricing page says free-tier content may be used to improve its products. See [Gemini API pricing](https://ai.google.dev/gemini-api/docs/pricing).
 - **OpenAI GPT-5 mini** is a paid alternative for a tightly specified selection task. Listed token pricing is $0.25 per million input tokens and $2 per million output tokens. See [the official model page](https://developers.openai.com/api/docs/models/gpt-5-mini).
 
-Both profiles are centralized in `application.json`. The provider remains `none`; this command makes no LLM calls. Selecting another provider currently produces an explicit unsupported-provider error, rather than pretending model ranking occurred. API access for either account has not been tested.
+Both profiles are centralized in `application.json`. The provider remains `none`; this command makes no LLM calls. Selecting another provider currently produces an explicit unsupported-provider error, rather than pretending model ranking occurred. Live Gemini ranking is verified with Gemini 3.5 Flash-Lite; OpenAI integration is not implemented.
 
 ### Remaining endpoint development
 
-An optional model adapter can propose a smaller, relevant set from the verified research. AI/user approval must supply the final reference choices. Connect the approved sources to production Scripture validation before mapping them into study content and the Word template. Preserve the complete main passage and full single verses; the final handout must still pass the readable one-page Word export and visual review requirements. Research collection alone does not generate or approve a handout.
+The Gemini ranking command below proposes a smaller, relevant set from the verified research. AI/user approval must supply the final reference choices. Connect the approved sources to production Scripture validation before mapping them into study content and the Word template. Preserve the complete main passage and full single verses; the final handout must still pass the readable one-page Word export and visual review requirements. Research collection alone does not generate or approve a handout.
+
+### Gemini meaning-based ranking
+
+1. Put your Gemini API key in the `gemini` field of `work/credentials/application.json`, or set `GEMINI_API_KEY` in your terminal. Model and endpoint settings are in `application.json` under `llm.profiles.gemini`.
+2. Rank the existing six-per-Testament research:
+
+   ```powershell
+   python scripts/rank-word-study.py --input work/research/2026-10-04-word-study-six-per-testament.json --output work/research/2026-10-04-word-study-gemini-ranked.json
+   ```
+
+3. Success prints **Ranked research saved**. Open the matching `.md`: each word has three full Old Testament verses and a single **See also...** line containing the other three references, followed by the same format for the New Testament.
+
+This explicit command invokes the configured Gemini model (currently Gemini 3.5 Flash-Lite) even though collection's `llm.provider` remains `none`. It sends the main passage and the existing six candidate verses per group in one request. Gemini ranks by the word's meaning in the main passage, rather than lexical overlap alone. Python validates that every group contains exactly its original six IDs and renders the original NIV source text. The JSON retains all six full verses, model response, prompt, timestamp, and source digest. It never overwrites the input research. Missing credentials, failed requests, or invalid rankings stop without writing a ranked report; there is no silent local-ranking fallback. No additional Python packages are required.
+
+The ranking is an AI draft for review, not a completed or visually reviewed one-page handout. The adapter uses Google's documented [structured JSON output](https://ai.google.dev/gemini-api/docs/generate-content/structured-output).
+
+### Verified Gemini ranking run
+
+The live ranking succeeded using Gemini 3.5 Flash-Lite. Google rejected 2.5 Flash-Lite as unavailable to new users; the user approved its recommended replacement, configured in `application.json`. The result is `work/research/2026-10-04-word-study-gemini-ranked.md` with the corresponding provenance JSON. All eight groups retain the original six source verses unchanged: three printed in full and three references on a See also line. This is research review, not Word layout verification.
+
+Research collection now excludes the main study passage from cross-reference candidates before choosing six per Testament. Study-word headings are capitalized. The revised October 4 ranking is `work/research/2026-10-04-word-study-gemini-revised.md`; Matthew 5:8 remains the study context but is excluded from every result group.
+
+### Production generation and forced regeneration
+
+Update now maps the latest dated, planner-matching Gemini research into the named Word template. It validates full-verse source records against the API.Bible cache. Explicit current authored handout content still takes precedence. Unranked research does not supply semantic selections. The main study passage is excluded from results, and study-word headings are capitalized.
+
+The approved printable selection is **one highest-ranked full verse per Testament per word**, with the other five references under **See also...**, to fit the PDF template's paired columns on one readable page at 13 points. The research Markdown retains its three-full/three-reference format. `application.json` controls `word_study.body_font_size` and `handout_full_verses_per_testament_per_word`; generation never automatically shrinks fonts or truncates verses to pass its page-count check.
+
+Both research CLIs accept `--force` on the same command line. They finish collecting/ranking before replacing previous output, and preserve the earlier JSON/Markdown under `work/_archive/research`. A failed model request leaves the existing ranking intact. `update-automation.py --communion --force` regenerates documents from the matching research; it does not rerun the model. See README for the complete three-command refresh sequence.
+
+Current template contract supersedes the earlier one-full-verse/13-point selection: print three full verses per Testament per word and three See also references, preserving the DOCX template typography (currently 12-point Scripture lines). The generation plan is maintained beside the templates at `work/templates/GENERATION-PLAN.md`. Overflow is reported; no automatic reduction of verses or font sizes is permitted.
+
+Current word-count rule: three study words print three full verses per Testament per word; four study words print two. Remaining ranked references use the See also row. Configure `word_study.handout_full_verses_by_word_count` in `application.json`; see `work/templates/GENERATION-PLAN.md`.

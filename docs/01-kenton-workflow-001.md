@@ -77,6 +77,8 @@ It generates:
 - praise chord sets in planner song order;
 - the website draft at `work/desktop/worship-highlights.json`.
 
+Each praise-chords PDF starts with its index. The standalone chords-index PDF is only a build intermediate and is not copied to DESKTOP or OUTPUT. The index DOCX is also a build intermediate and is not copied to DESKTOP or OUTPUT. Reruns archive older standalone index PDFs from those folders.
+
 Missing inputs are listed in `work/desktop/needs-attention.txt`. Exit code 2 means that some outputs need attention; successfully generated independent outputs are still retained. Exit code 1 means the update failed.
 
 Update archives older dated generated documents from DESKTOP and OUTPUT under `work/_archive/previous-generated`. An open file may need to be closed before it can be archived. A supplied Scripture reading must have a mapped place in the bulletin; the script must not silently omit it. A blank reading preserves its template mapping for later weeks.
@@ -113,7 +115,7 @@ Open both services in `work/output`. Check every rendered page before publishing
 6. Website details in `work/desktop/worship-highlights.json`, when applicable.
 7. Communion wording and placement in both bulletins when `--communion` was selected.
 
-Word studies must contain the complete NIV main passage and exact NIV cross-references. Use 14-point Scripture/body text and 16-point main/word headings; 13-point body text is allowed only when required to fit. A Word study exporting to more than one page is not ready to publish. MOV handouts keep their separate two-page format.
+Word studies must contain the complete NIV main passage and exact NIV cross-references. Preserve the typography in the current Word template, including its 12-point Scripture text. A Word study exporting to more than one page is not ready to publish. MOV handouts keep their separate two-page format.
 
 Correct planning facts in the workbook or authored material, then rerun steps 1 and 2. Do not publish an output that has not been visually reviewed.
 
@@ -180,6 +182,14 @@ You do not need to interpret or edit the JSON files in DESKTOP. They are working
 
 Handout templates supply layout. Current teaching content must come from AI/user-authored material or a matching authored study; old example text is never substituted for this week's passage or movie. The word-study PDF is a visual reference; generation uses the DOCX.
 
+Update also reads the most recently ranked research JSON under `work/research` whose filename starts with the selected Sunday and whose passage and ordered study words match the planner. It uses that ranked source when there is no explicit current `handout_content`. Unranked searches and previous dates are not substituted. API.Bible verse text is checked against its retained full-verse source cache before template mapping. The complete main passage is verified separately.
+
+The current selection is three full verses per Testament per word, with the remaining three references under `See also...`. The current Word template controls fonts and sizes, including the user-approved 12-point Scripture lines. See `work/templates/GENERATION-PLAN.md` for the mapping and validation contract. Older 13/14-point overrides and the one-verse selection are superseded.
+
+The updated Word template has a separate third table row for `See also...`, which update fills using that row's retained formatting. Existing two-row templates remain supported. The current DOCX is read fresh on every update; template edits do not require a new research or Gemini run.
+
+To rebuild existing documents, run `python scripts/update-automation.py --communion --force`. Update always rebuilds; this flag makes the intent explicit. It does not rerun Gemini or bypass the one-page check. To refresh research and ranking first, use the commands in the README's NIV research section. Put `--force` on the same command line, never on a separate PowerShell line.
+
 ## If a command stops
 
 - Start with `work/desktop/automation.log` and `work/desktop/needs-attention.txt`.
@@ -188,3 +198,5 @@ Handout templates supply layout. Current teaching content must come from AI/user
 - If Word cannot export PDFs, run the command from the normal VS Code terminal with Microsoft Word available.
 - If the Drive week-set already exists, review the replacement and use `--force` only when replacement is intended.
 - If Drive is unavailable, stop; do not publish to a local substitute.
+
+Current word-count rule: three study words print three full verses per Testament per word; four study words print two. Remaining ranked references use the See also row. Configure `word_study.handout_full_verses_by_word_count` in `application.json`; see `work/templates/GENERATION-PLAN.md`.

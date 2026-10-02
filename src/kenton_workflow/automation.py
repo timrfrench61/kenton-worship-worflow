@@ -486,7 +486,7 @@ def bulletin(template, service, content, day, destination):
         body = document.find(W+'body')
         ps = body.findall(W+'p')
         def matching(prefix):
-            return [p for p in ps if paragraph_text(p).strip().lstrip('* ').upper().startswith(prefix)]
+            return [p for p in ps if paragraph_text(p).strip().lstrip('* \ufffd').upper().startswith(prefix)]
         def one(prefix):
             found = matching(prefix)
             if len(found) != 1:
@@ -542,7 +542,19 @@ def bulletin(template, service, content, day, destination):
                     value = prefix + value
                 set_text(p, value)
         prayer_heading, silent = one('PRAYER OF CONFESSION'), one('SILENT PRAYER')
-        set_text(prayer_heading, paragraph_text(prayer_heading).rstrip() + ' (UNISON)' if '(UNISON)' not in paragraph_text(prayer_heading) else paragraph_text(prayer_heading))
+        # A stray leading glyph may have a black run before the blue heading.
+        # Use the actual heading run, not that glyph's formatting.
+        heading_run = next((r for r in prayer_heading.findall(W+'r')
+                            if 'PRAYER' in paragraph_text(r).upper()), None)
+        first_run = prayer_heading.find(W+'r')
+        if heading_run is not None and first_run is not None and heading_run is not first_run:
+            old = first_run.find(W+'rPr')
+            if old is not None:
+                first_run.remove(old)
+            properties = heading_run.find(W+'rPr')
+            if properties is not None:
+                first_run.insert(0, deepcopy(properties))
+        set_text(prayer_heading, 'PRAYER OF CONFESSION (UNISON)')
         prayer_nodes = between(prayer_heading, silent)
         if not prayer_nodes:
             raise ValueError('Template has no prayer paragraphs.')
@@ -760,12 +772,22 @@ def gather(root, day, offline, chords):
             e['call_lines'] = attempt('call to worship', lambda: bible_reading(s['call_to_worship'], p['desktop'] / 'scripture-cache', offline))
         sources = imported.get('planning_sources', [])
         worship = Path(sources[0]).parent if sources else PLANNING_ROOT
+        if s['kind'] == 'word-study' and not e.get('handout_content'):
+            from .study_research import load_ranked
+            research = attempt('ranked study research', lambda: load_ranked(root, day, s))
+            if research:
+                research_path, e['handout_content'], e['_research_niv'] = research
+                log(root, f'Reading ranked study research: "{research_path}"')
         e['_handout_source'] = attempt('handout', lambda: handouts.prepare_named(
             s, e, Path(record['templates']), [worship / '_Handouts']))
         if e['_handout_source']:
             log(root, f'Reading authored handout/template: "{e["_handout_source"]}"')
             if s['kind'] == 'word-study':
                 def lookup_niv(ref):
+                    cached = e.get('_research_niv', {}).get(handouts.reference(ref))
+                    if cached:
+                        log(root, f'Exact NIV word-study reference: {ref} (verified API.Bible research source)')
+                        return cached
                     log(root, f'Exact NIV word-study reference: {ref} (Bible Gateway source HTML)')
                     return exact_niv_reading(ref, p['desktop'] / 'scripture-cache/word-study-niv', offline)
                 e['_verified_word_content'] = attempt('exact NIV word study', lambda:
@@ -916,6 +938,19 @@ def update_automation(root, day, check=False, offline=False, chords=None, bullet
         for source in sorted(job.glob('*')):
             if not source.is_file() or source.suffix.lower() not in ('.docx', '.pdf'):
                 continue
+            # Both index files are intermediates used only inside praise-chords.pdf.
+            if source.name.endswith(('-chords-index.docx', '-chords-index.pdf')):
+                for parent in (output, p['desktop']):
+                    old_index = parent / source.name
+                    if old_index.exists():
+                        try:
+                            retained = Path(root) / 'work/_archive/chord-index' / stage.name / parent.name / source.name
+                            retained.parent.mkdir(parents=True, exist_ok=True)
+                            old_index.rename(retained)
+                        except OSError as error:
+                            failures.append(label)
+                            issues.append(f'{label}: could not archive standalone index {old_index}: {error}')
+                continue
             if source.suffix.lower() == '.pdf':
                 try:
                     if not len(PdfReader(source).pages):
@@ -968,8 +1003,9 @@ def update_automation(root, day, check=False, offline=False, chords=None, bullet
             handout(s, e, day, target)
             pdf = export_word(target)
             if s['kind'] == 'word-study' and len(PdfReader(pdf).pages) != 1:
-                raise ValueError('Word study must fit on one page. Draft retained for correction; '
-                                 'AI/user must select fewer relevant verses without paraphrasing NIV. Use 14-point body text, or an explicit 13-point setting; never smaller.')
+                raise ValueError(f'Word study exported to {len(PdfReader(pdf).pages)} pages; the current requirement is one. '
+                                 'Draft retained with the template formatting and selected verses unchanged. '
+                                 'Review work/templates/GENERATION-PLAN.md and adjust the template or explicitly revise the page requirement.')
         attempt(f'{name} handout', f'{name}-handout', make_handout)
 
         def make_chords(folder):
@@ -1080,6 +1116,7 @@ def main(stage, argv=None):
     elif stage == 'update':
         parser.add_argument('--website-only', action='store_true', help='Prepare only the four website panels from the planning copies.')
         parser.add_argument('--check', action='store_true', help='List missing inputs without generating documents.')
+        parser.add_argument('--force', action='store_true', help='Explicitly regenerate working documents; update already rebuilds them on every run.')
         parser.add_argument('--offline', action='store_true', help='Use supplied/cached Scripture without contacting Bible Gateway.')
         parser.add_argument('--chords', type=Path, help='Read-only praise-chords source folder.')
         template_options = parser.add_mutually_exclusive_group()

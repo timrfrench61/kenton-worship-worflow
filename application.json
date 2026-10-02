@@ -7,6 +7,9 @@
     "api_key_env": "API_BIBLE_KEY"
   },
   "word_study": {
+    "see_also_format": "See also {references} (NIV)",
+    "handout_full_verses_per_testament_per_word": 3,
+    "handout_full_verses_by_word_count": {"3": 3, "4": 2},
     "verses_per_testament_per_word": 6,
     "page_size": 50,
     "max_pages_per_testament": 2,
@@ -19,11 +22,12 @@
   },
   "llm": {
     "provider": "none",
-    "note": "Reserved for an optional future ranking adapter. Research currently uses Python only; no LLM calls are implemented.",
+    "note": "Collection uses Python only. rank-word-study.py explicitly invokes the configured Gemini profile to rank existing research.",
+    "timeout_seconds": 60,
     "profiles": {
       "gemini": {
         "base_url": "https://generativelanguage.googleapis.com/v1beta",
-        "model": "gemini-2.5-flash-lite",
+        "model": "gemini-3.5-flash-lite",
         "api_key_env": "GEMINI_API_KEY"
       },
       "openai": {

@@ -3,6 +3,7 @@ import tempfile
 import unittest
 
 from docx import Document
+from docx.shared import RGBColor
 from kenton_workflow.automation import bulletin, archive_older_generated
 
 
@@ -22,6 +23,10 @@ class BulletinTemplateTests(unittest.TestCase):
                          'SCRIPTURE - Example 1:1', 'PRAYER OF CONFESSION', 'Prayer',
                          'Reference', 'SILENT PRAYER', 'SERMON - Example', 'Title', 'COMMUNION'):
                 doc.add_paragraph(text)
+            heading = next(p for p in doc.paragraphs if p.text == 'PRAYER OF CONFESSION')
+            heading.clear()
+            heading.add_run('\ufffd').font.color.rgb = RGBColor.from_string('000000')
+            heading.add_run('PRAYER OF CONFESSION').font.color.rgb = RGBColor.from_string('2F5496')
             doc.save(template)
             service = dict(praise_songs=['Song'], hymns=['Hymn'], call_to_worship='Example 1:1',
                            prayer_of_confession='Example 2:1', additional_reading='',
@@ -35,6 +40,9 @@ class BulletinTemplateTests(unittest.TestCase):
             texts = [p.text for p in Document(filled).paragraphs]
             self.assertIn('SCRIPTURE — Exodus 33:12-23', texts)
             self.assertIn('COMMUNION', texts)
+            heading = next(p for p in Document(filled).paragraphs if p.text.startswith('PRAYER OF CONFESSION'))
+            self.assertEqual(heading.text, 'PRAYER OF CONFESSION (UNISON)')
+            self.assertEqual(str(heading.runs[0].font.color.rgb), '2F5496')
             doc = Document(template)
             for p in doc.paragraphs:
                 if p.text.startswith('SCRIPTURE'):

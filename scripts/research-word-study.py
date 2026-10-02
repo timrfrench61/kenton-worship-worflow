@@ -9,6 +9,7 @@ import re
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, quote
 from urllib.request import Request, urlopen
+from _research_output import write_research
 
 ROOT = Path(__file__).resolve().parents[1]
 OT = set('GEN EXO LEV NUM DEU JOS JDG RUT 1SA 2SA 1KI 2KI 1CH 2CH EZR NEH EST JOB PSA PRO ECC SNG ISA JER LAM EZK DAN HOS JOL AMO OBA JON MIC NAM HAB ZEP HAG ZEC MAL'.split())
@@ -17,6 +18,20 @@ NT = set('MAT MRK LUK JHN ACT ROM 1CO 2CO GAL EPH PHP COL 1TH 2TH 1TI 2TI TIT PH
 
 def tokens(value):
     return set(re.findall(r"[a-z]+", value.casefold()))
+
+
+def in_main_passage(verse_id, passages):
+    book, chapter, verse = verse_id.split('.')
+    position = (int(chapter), int(verse))
+    for passage in passages:
+        bounds = passage['id'].split('-')
+        start = bounds[0].split('.')
+        end = bounds[-1].split('.')
+        if len(start) != 3 or len(end) != 3 or start[0] != end[0]:
+            raise ValueError('Cannot safely exclude the main passage: unsupported passage ID.')
+        if book == start[0] and (int(start[1]), int(start[2])) <= position <= (int(end[1]), int(end[2])):
+            return True
+    return False
 
 
 class Client:
@@ -87,7 +102,7 @@ def collect(get, config, passage, words, count, page_size):
               'selection_method': 'Exact word occurrence, then overlap with other study words, then API relevance order. Not theological approval.'}
     context = set().union(*(tokens(word) for word in words))
     for word in words:
-        item = {'word': word}
+        item = {'word': word.title()}
         for testament, books in [('old_testament', OT), ('new_testament', NT)]:
             pool, pages = {}, []
             offset = 0
@@ -99,7 +114,7 @@ def collect(get, config, passage, words, count, page_size):
                 verses = data.get('verses', [])
                 for verse in verses:
                     validate_entry(verse, bible_id, books)
-                    if tokens(word) <= tokens(verse.get('text', '')):
+                    if not in_main_passage(verse['id'], main['data']['passages']) and tokens(word) <= tokens(verse.get('text', '')):
                         pool.setdefault(verse['id'], verse)
                 if len(pool) >= count or not verses:
                     break
@@ -134,7 +149,7 @@ def markdown(result):
              f"Requested: {result['requested_per_testament_per_word']} Old Testament and the same number of New Testament verses per word.",
              '', 'These are research candidates, not an approved one-page handout.', '', result['selection_method'], '']
     for item in result['words']:
-        lines += ['## ' + item['word'], '']
+        lines += ['## ' + item['word'].title(), '']
         for key, label in [('old_testament', 'Old Testament'), ('new_testament', 'New Testament')]:
             lines += ['### ' + label, '']
             for number, verse in enumerate(item[key]['verses'], 1):
@@ -152,6 +167,7 @@ def main():
     parser.add_argument('--count', type=int, help='Verses per Testament per word; default from application.json')
     parser.add_argument('--limit', type=int, help='Search page size; default from application.json')
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--force', action='store_true', help='Regenerate existing research, archiving the previous files.')
     args = parser.parse_args()
     try:
         config = json.loads(args.config.read_text(encoding='utf-8-sig'))
@@ -164,15 +180,12 @@ def main():
         dest = args.output.resolve()
         if (ROOT / 'work').resolve() not in dest.parents or dest.suffix != '.json':
             raise ValueError('Output must be a JSON file under work/.')
-        if dest.exists() or dest.with_suffix('.md').exists():
-            raise ValueError('Output already exists. Choose a new filename to preserve prior research.')
+        if (dest.exists() or dest.with_suffix('.md').exists()) and not args.force:
+            raise ValueError('Output already exists. Add --force on the same command line to regenerate it.')
         result = collect(Client(config).get, config, args.passage, args.words, count, limit)
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        with dest.open('x', encoding='utf-8') as stream:
-            json.dump(result, stream, ensure_ascii=False, indent=2)
-            stream.write('\n')
-        with dest.with_suffix('.md').open('x', encoding='utf-8') as stream:
-            stream.write(markdown(result))
+        if args.force and not result['complete'] and dest.exists():
+            raise ValueError('Incomplete research; existing output preserved. Use a new filename to inspect the partial results.')
+        write_research(ROOT, dest, result, markdown(result), args.force)
         print(f'Research saved: {dest} and {dest.with_suffix(".md")}')
         return 0 if result['complete'] else 2
     except (OSError, ValueError, KeyError, TypeError) as error:

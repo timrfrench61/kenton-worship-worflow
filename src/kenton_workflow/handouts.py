@@ -26,6 +26,25 @@ def reference(value):
     return re.sub(r'[\s.]', '', value)
 
 
+def word_table_cells(table):
+    cells = table.xpath('./w:tr/w:tc', namespaces=NS)
+    headers = [next((i for i, c in enumerate(cells) if text(c).strip() == label), None)
+               for label in ('OLD TESTAMENT', 'NEW TESTAMENT')]
+    if None in headers:
+        raise ValueError('Expected Old/New Testament table headings.')
+    if headers == [0, 1] and len(cells) in (4, 6):
+        return [(cells[i+2], cells[i+4] if len(cells) == 6 else cells[i+2]) for i in range(2)]
+    mapped = []
+    for index in headers:
+        if index + 1 >= len(cells):
+            raise ValueError('Missing Testament Scripture cell.')
+        body = cells[index+1]
+        following = cells[index+2] if index+2 < len(cells) else None
+        see = following if following is not None and text(following).strip().startswith('See also') else body
+        mapped.append((body, see))
+    return mapped
+
+
 def read_template(path, kind):
     """Recognize the two supplied patterns by their actual section structure."""
     with ZipFile(path) as package:
@@ -50,11 +69,12 @@ def read_template(path, kind):
         slots = dict(points=point_slots, questions=question_slots, scripture=scripture_slots, focus=focus)
         identity = dict(series=strings[0], episode=episode[1], episode_title=episode[2])
     else:
-        if not strings[1].startswith('A Word Study on '):
+        passage_heading = next((i for i, s in enumerate(strings[:3]) if s.startswith('A Word Study on ')), None)
+        if passage_heading is None:
             raise ValueError('Missing Word study passage heading.')
         further = next((i for i, s in enumerate(strings) if s.startswith('For further reading:')), None)
         summary = strings.index('Putting It Together') if 'Putting It Together' in strings else (further or len(blocks) - 1)
-        starts = [i for i in range(3, summary) if re.match(r'^\d+\.\s+', strings[i])]
+        starts = [i for i in range(passage_heading + 2, summary) if re.match(r'^\d+\.\s+', strings[i])]
         if not starts:
             raise ValueError('Expected numbered word sections.')
         tables = []
@@ -65,13 +85,12 @@ def read_template(path, kind):
             if table >= summary or blocks[table].tag != W + 'tbl':
                 raise ValueError('Expected a two-Testament table.')
             tables.append(table)
-            cells = blocks[table].xpath('./w:tr/w:tc', namespaces=NS)
-            if len(cells) != 4 or 'OLD TESTAMENT' not in text(cells[0]) or 'NEW TESTAMENT' not in text(cells[1]):
-                raise ValueError('Expected paired Old/New Testament columns.')
-            if any(not text(c).strip() for c in cells[2:]):
+            if any(not text(c).strip() for c, _ in word_table_cells(blocks[table])):
                 raise ValueError('Missing cross-reference material.')
-        slots = dict(words=starts, tables=tables, summary=summary, further=further)
-        identity = dict(passage=strings[1].removeprefix('A Word Study on '),
+        slots = dict(words=starts, tables=tables, summary=summary, further=further,
+                     title=0 if passage_heading == 1 else None, passage_heading=passage_heading, passage_text=passage_heading+1,
+                     passage_attribution='[Passage reference]' in strings[passage_heading+1] or bool(re.search(r',\s*NIV\s*$', strings[passage_heading+1])))
+        identity = dict(passage=strings[passage_heading].removeprefix('A Word Study on '),
                         words=[re.sub(r'^\d+\.\s+', '', strings[i]) for i in starts])
     return tree, body, slots, identity
 
@@ -134,6 +153,7 @@ def prepare_named(service, content, template_folder, authored_folders):
     if not template.is_file():
         raise ValueError(f'Missing editable template: "{template}". A PDF is a visual reference, not a Word template.')
     read_template(template, service['kind'])
+    content['_preserve_template_format'] = True
     if content.get('handout_content'):
         validate(content['handout_content'], service)
     else:
@@ -250,7 +270,8 @@ def verified_word_content(service, content, lookup):
                     further_reading=text(blocks[slots['further']]).removeprefix('For further reading: ') if slots['further'] is not None else '', words=[])
         for word, table in zip(identity['words'], slots['tables']):
             item = dict(word=word)
-            cells = blocks[table].xpath('./w:tr/w:tc', namespaces=NS)[2:]
+            all_cells = blocks[table].xpath('./w:tr/w:tc', namespaces=NS)
+            cells = all_cells[2:4]
             for cell, field in zip(cells, ('old_testament', 'new_testament')):
                 item[field] = []
                 for paragraph in cell.findall(W + 'p'):
@@ -264,6 +285,12 @@ def verified_word_content(service, content, lookup):
                     if parts[0].endswith(' (NIV excerpt)'):
                         entry['excerpt'] = parts[1]
                     item[field].append(entry)
+            if len(all_cells) == 6:
+                for cell, field in zip(all_cells[4:], ('old_testament', 'new_testament')):
+                    value = re.sub(r'^See also[.\s:]*', '', text(cell)).strip().rstrip('.')
+                    value = re.sub(r'\s*\(NIV\)\s*$', '', value)
+                    if value:
+                        item[field + '_see_also'] = [v.strip() for v in value.split(';') if v.strip()]
             data['words'].append(item)
     validate(data, service)
     data['passage_text'] = lookup(data['passage_reference'])
@@ -370,17 +397,23 @@ def generate(service, content, destination):
                             node.text = re.sub(r'EPISODE\s+\d+', 'EPISODE ' + data['episode'], node.text)
                     changed[name] = etree.tostring(footer, xml_declaration=True, encoding='UTF-8', standalone=True)
     else:
-        fill(blocks[0], [data['title']])
-        fill(blocks[1], ['A Word Study on ' + data['passage_reference']])
-        fill(blocks[2], [data['passage_text'] + '\n', data['passage_reference'] + ', NIV'])
+        if slots['title'] is not None:
+            fill(blocks[slots['title']], [data['title']])
+        fill(blocks[slots['passage_heading']], ['A Word Study on ' + data['passage_reference']])
+        passage_parts = [data['passage_text']]
+        if slots['passage_attribution']:
+            passage_parts = [data['passage_text'] + '\n', data['passage_reference'] + ', NIV']
+        fill(blocks[slots['passage_text']], passage_parts)
         body_size = data.get('body_font_size', 14)
-        font_size(blocks[0], 16)
-        font_size(blocks[1], 11)
-        font_size(blocks[2], body_size)
+        apply_size = (lambda element, points: None) if content.get('_preserve_template_format') else font_size
+        apply_size(blocks[0], 16)
+        apply_size(blocks[1], 11)
+        apply_size(blocks[2], body_size)
         first = slots['words'][0]
         for number, word in enumerate(data['words'], 1):
-            heading = deepcopy(blocks[first])
-            table = deepcopy(blocks[slots['tables'][0]])
+            slot = min(number - 1, len(slots['words']) - 1)
+            heading = deepcopy(blocks[slots['words'][slot]])
+            table = deepcopy(blocks[slots['tables'][slot]])
             header = table.find(W + 'tr')
             properties = header.find(W + 'trPr')
             if properties is None:
@@ -388,27 +421,43 @@ def generate(service, content, destination):
             if properties.find(W + 'tblHeader') is None:
                 etree.SubElement(properties, W + 'tblHeader')
             fill(heading, [f'{number}. {word["word"]}'])
-            font_size(heading, 16)
-            font_size(header, 11)
-            cells = table.xpath('./w:tr/w:tc', namespaces=NS)[2:]
-            for cell, field in zip(cells, ('old_testament', 'new_testament')):
+            apply_size(heading, 16)
+            apply_size(header, 11)
+            for (cell, see_cell), field in zip(word_table_cells(table), ('old_testament', 'new_testament')):
                 sample = cell.find(W + 'p')
+                samples = [p for p in cell.findall(W + 'p') if text(p).strip() and not text(p).startswith('See also')]
+                see_sample = next((p for p in see_cell.findall(W+'p') if text(p).startswith('See also')), sample)
+                see_sample = deepcopy(see_sample)
                 for p in list(cell.findall(W + 'p')):
                     cell.remove(p)
-                for item in word[field]:
-                    p = deepcopy(sample)
+                for index, item in enumerate(word[field]):
+                    p = deepcopy(samples[min(index, len(samples) - 1)])
                     label = ' (NIV excerpt) — ' if 'excerpt' in item else ' (NIV) — '
                     fill(p, [item['reference'] + label, item['text']])
-                    font_size(p, body_size)
+                    apply_size(p, body_size)
                     cell.append(p)
+                if word.get(field + '_see_also'):
+                    p = deepcopy(see_sample)
+                    if see_cell is not cell:
+                        for old in list(see_cell.findall(W + 'p')):
+                            see_cell.remove(old)
+                    pattern = data.get('see_also_format', 'See also {references} (NIV)')
+                    if pattern.count('{references}') != 1:
+                        raise ValueError('see_also_format must contain one {references} placeholder.')
+                    fill(p, [pattern.replace('{references}', '; '.join(word[field + '_see_also']))])
+                    apply_size(p, body_size)
+                    see_cell.append(p)
+                elif see_cell is not cell:
+                    for old in see_cell.findall(W + 'p'):
+                        fill(old, [''])
             for b in (heading, table):
                 body.insert(body.index(blocks[first]), b)
-        for i, b in enumerate(blocks[3:], 3):
+        for i, b in enumerate(blocks[slots['passage_text']+1:], slots['passage_text']+1):
             if b.tag == W + 'sectPr':
                 continue
             if i == slots['further'] and data.get('further_reading'):
                 fill(b, ['For further reading: ' + data['further_reading']])
-                font_size(b, 11)
+                apply_size(b, 11)
             else:
                 body.remove(b)
     changed['word/document.xml'] = etree.tostring(tree, xml_declaration=True, encoding='UTF-8', standalone=True)
