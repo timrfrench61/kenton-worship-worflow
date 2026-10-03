@@ -89,6 +89,8 @@ Success creates `work/output/2026-10-04-morning-word-study.docx` and its one-pag
 
 ### Website panels only
 
+Card colors and background images are controlled here in `website.json`, under `cards`. See [website maintenance and deployment](docs/01-kenton-website-deploy-001.md) for the settings and review steps. DigitalOcean deployment, rollback behavior, history, and the one-time service-permission setup are documented there. Run `python scripts/deploy-website.py --check` to check local readiness.
+
 1. Prepare the website draft:
 
    ```powershell

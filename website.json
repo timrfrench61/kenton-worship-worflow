@@ -1,4 +1,90 @@
 {
   "project": "C:/repos/kenton_website",
-  "data_file": "wwwroot/data/worship-highlights.json"
+  "data_file": "wwwroot/data/worship-highlights.json",
+  "cards": {
+    "last-sunday-morning": {
+      "backgroundImage": "chatham-1.jpg",
+      "appearance": {
+        "backgroundColor": "#dce6da",
+        "overlayColor": "#ccdcc985",
+        "textColor": "#202920",
+        "headingColor": "#1d2b1f",
+        "accentColor": "#54725a",
+        "borderColor": "#aebead",
+        "linkColor": "#45604a",
+        "imageOpacity": "0.68"
+      }
+    },
+    "last-sunday-evening": {
+      "backgroundImage": "evening-sign.jpg",
+      "appearance": {
+        "backgroundColor": "#f5e2cb",
+        "overlayColor": "#f4d6b280",
+        "textColor": "#202920",
+        "headingColor": "#1d2b1f",
+        "accentColor": "#b65f19",
+        "borderColor": "#d9ae7d",
+        "linkColor": "#8b430d",
+        "imageOpacity": "0.68"
+      }
+    },
+    "next-sunday-morning": {
+      "backgroundImage": "chatham-2.jpg",
+      "appearance": {
+        "backgroundColor": "#f1e2b6",
+        "overlayColor": "#f1e2b6c7",
+        "textColor": "#202920",
+        "headingColor": "#1d2b1f",
+        "accentColor": "#8a651e",
+        "borderColor": "#bea15c",
+        "linkColor": "#654713",
+        "imageOpacity": "0.68"
+      }
+    },
+    "next-sunday-evening": {
+      "backgroundImage": "church-window.jpg",
+      "appearance": {
+        "backgroundColor": "#edf0c4",
+        "overlayColor": "#edf0c4c7",
+        "textColor": "#202920",
+        "headingColor": "#1d2b1f",
+        "accentColor": "#737e27",
+        "borderColor": "#b5bd65",
+        "linkColor": "#4f5c18",
+        "imageOpacity": "0.68"
+      }
+    }
+  },
+  "deployment": {
+    "provider": "digitalocean-droplet",
+    "project_name": "kenton-church",
+    "droplet_name": "kenton-web-01",
+    "host": "138.68.26.140",
+    "ssh_port": 22,
+    "ssh_user": "tim",
+    "identity_file": null,
+    "service_name": "kenton-website",
+    "service_verified": true,
+    "remote_directory": "/var/www/kenton",
+    "public_url": "https://kentonchurch.org",
+    "health_url": "https://kentonchurch.org/",
+    "runtime_identifier": "linux-x64",
+    "framework": "net10.0",
+    "project_file": "kenton_website.csproj",
+    "configuration": "Release",
+    "history_directory": "work/website-deploy",
+    "desktop_history": "work/desktop/website-maintenance.log",
+    "maintenance_workbook": {
+      "path": "G:/My Drive/kenton/_worship/recent-logs.xlsx",
+      "sheet": "Website Maintenance",
+      "enabled": true
+    },
+    "enabled": true,
+    "remote_release_root": "/home/tim/kenton-deploy",
+    "preserve_files": [
+      "appsettings.json",
+      "appsettings.Production.json",
+      "appsettings.Development.json"
+    ]
+  }
 }

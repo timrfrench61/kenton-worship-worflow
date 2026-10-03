@@ -13,6 +13,24 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class WebsiteTests(unittest.TestCase):
+    def test_appearance_settings_validate_and_preserve_content(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            image = root / 'site/wwwroot/images/card-background/test.jpg'
+            image.parent.mkdir(parents=True)
+            image.write_bytes(b'fixture')
+            config = {'project': str(root/'site'), 'cards': {'next-sunday-morning': {
+                'backgroundImage': 'test.jpg', 'appearance': {'overlayColor': '#12345680', 'imageOpacity': '0.6'}}}}
+            website.write(root/'website.json', config)
+            cards = [{'slot': 'next-sunday-morning', 'summary': 'Keep teaching'}]
+            website.apply_appearance(root, cards)
+            self.assertEqual(cards[0]['summary'], 'Keep teaching')
+            self.assertEqual(cards[0]['appearance']['overlayColor'], '#12345680')
+            config['cards']['next-sunday-morning']['appearance']['overlayColor'] = 'red; background:url(https://example.org)'
+            website.write(root/'website.json', config)
+            with self.assertRaisesRegex(ValueError, '#RRGGBB'):
+                website.apply_appearance(root, cards)
+
     def test_rollover_review_edit_guard_and_idempotent_publish(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
