@@ -18,12 +18,17 @@ def main():
     modes.add_argument('--check', action='store_true')
     modes.add_argument('--inspect', action='store_true', help='Read server identity, runtime, and service paths over SSH.')
     modes.add_argument('--prepare', action='store_true', help='Build a full local release with hashes; no upload.')
-    modes.add_argument('--deploy', type=Path, metavar='RELEASE', help='Deploy an explicitly reviewed prepared release.')
+    modes.add_argument('--deploy', action='store_true', help='Deploy the reviewed release selected by --release.')
+    parser.add_argument('--release', nargs='?', const='latest', help='Select the latest prepared release automatically; optional ID or path override.')
     modes.add_argument('--log-only', type=Path, metavar='RELEASE', help='Retry maintenance logging without redeploying.')
     parser.add_argument('--reviewed', action='store_true')
     parser.add_argument('--note', default='', help='Description recorded with the release.')
     parser.add_argument('--ssh-user', help='Override the configured login for inspection.')
     args = parser.parse_args()
+    if args.deploy and (not args.release or not args.reviewed):
+        parser.error('--deploy requires --release and --reviewed.')
+    if args.release and not args.deploy:
+        parser.error('--release is used with --deploy.')
     try:
         config = json.loads((ROOT / 'website.json').read_text(encoding='utf-8-sig'))
         settings = config['deployment']
@@ -37,7 +42,23 @@ def main():
             prepare(ROOT, config, args.note.strip())
             return 0
         if args.deploy:
-            deploy(ROOT, config, args.deploy, args.reviewed)
+            if args.release == 'latest':
+                releases = ROOT / settings['history_directory']
+                candidates = sorted(p.parent for p in releases.glob('*/release.json')
+                                    if re.fullmatch(r'\d{8}T\d{12}Z', p.parent.name))
+                if not candidates:
+                    raise ValueError('No prepared release found. Run --prepare --note "Describe your changes" first.')
+                folder = candidates[-1]
+                if (folder / 'receipt.json').exists():
+                    raise ValueError('The latest release was already attempted. Prepare a new release; an older release will not be selected automatically.')
+                print('Automatically selected release:', folder.name)
+            else:
+                folder = Path(args.release)
+            if len(folder.parts) == 1 and not folder.is_absolute():
+                folder = ROOT / settings['history_directory'] / folder
+            elif not folder.is_absolute():
+                folder = ROOT / folder
+            deploy(ROOT, config, folder, args.reviewed)
             return 0
         if args.log_only:
             folder = args.log_only.resolve()

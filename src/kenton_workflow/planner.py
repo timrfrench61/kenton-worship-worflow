@@ -106,7 +106,9 @@ def extract_week(planner_path, catalog_path, requested_date):
                 matches = indexes[tab].get(song_key(item['value'], tab), []) if item['value'] else []
                 item['catalog_matches'] = [{'workbook': paths[1].name, 'sheet': tab, 'cell': c} for c in matches]
                 if item['value'] and len(matches) != 1:
-                    issues.append(f"{item['source']['cell']}: expected one {tab} name match; found {len(matches)}")
+                    issues.append(
+                        f"{LABELS[row]} (planner!{item['source']['cell']}): "
+                        f"{item['value']!r}: expected one {tab} name match; found {len(matches)}")
                 result.append(item)
             return result
         def service(sermon, topic, call, confession, praise, hymns):

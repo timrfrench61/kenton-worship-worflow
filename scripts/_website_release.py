@@ -15,6 +15,13 @@ def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def event(folder, message):
+    line = f'{datetime.now(timezone.utc).isoformat()}  {message}'
+    print(line, flush=True)
+    with (folder / 'deployment.log').open('a', encoding='utf-8') as stream:
+        stream.write(line + '\n')
+
+
 def history(root, config, item):
     path = (root / config['desktop_history']).resolve()
     if (root / 'work').resolve() not in path.parents:
@@ -61,6 +68,7 @@ def prepare(root, config, note):
         (folder / 'release.json').write_text(json.dumps(spec, indent=2), encoding='utf-8')
         history(root, settings, spec)
         print(f'Prepared release: {folder}')
+        print('After review, deploy with: python scripts/deploy-website.py --deploy --reviewed --release')
         return folder
     except Exception:
         history(root, settings, dict(item, status='prepare_failed'))
@@ -132,14 +140,20 @@ def deploy(root, config, folder, reviewed):
         options += ['-i', str(Path(settings['identity_file']).expanduser())]
     ssh = ['ssh', *options, '-p', str(settings.get('ssh_port', 22)), host]
     receipt = {'release_id': spec['release_id'], 'status': 'deploying', 'note': spec['note'], 'remote_release': remote}
+    event(folder, f"VALIDATED release={spec['release_id']} target={host} service={settings['service_name']} hashes=OK reviewed=True")
     (folder / 'receipt.json').write_text(json.dumps(receipt, indent=2))
     try:
+        event(folder, f'UPLOAD starting; destination={remote}')
         subprocess.run(ssh + ['mkdir -p ' + shlex.quote(remote)], check=True)
         subprocess.run(['scp', *options, '-P', str(settings.get('ssh_port', 22)),
                         *[str(folder / n) for n in ('payload.tar.gz', 'release.json', 'activate.py')],
                         host + ':' + shlex.quote(remote) + '/'], check=True)
+        event(folder, 'UPLOAD complete; ACTIVATION starting (preserve settings, switch files, restart, check health; automatic rollback on failure)')
         result = subprocess.run(ssh + ['python3 ' + shlex.quote(remote + '/activate.py') + ' ' + shlex.quote(remote)],
                                 capture_output=True, text=True, timeout=240)
+        for label, output in [('REMOTE', result.stdout), ('REMOTE ERROR', result.stderr)]:
+            if output.strip():
+                event(folder, f'{label}: {output.strip()}')
         # Fetch the receipt even when activation rolled back or the connection failed.
         response = subprocess.run(ssh + ['cat ' + shlex.quote(remote + '/remote-receipt.json')],
                                   capture_output=True, text=True, timeout=20)
@@ -151,13 +165,16 @@ def deploy(root, config, folder, reviewed):
             receipt['transport_warning'] = 'SSH returned an error; remote receipt reports success.'
     except Exception as error:
         receipt.update(status='unknown_check_server', error=str(error))
+    event(folder, f"RESULT status={receipt['status']}" + (f" error={receipt['error']}" if receipt.get('error') else ''))
     (folder / 'receipt.json').write_text(json.dumps(receipt, indent=2))
     history(root, settings, receipt)
     if receipt['status'] != 'deployed':
         raise ValueError(f"Deployment status: {receipt['status']}. Inspect {folder / 'receipt.json'}")
     try:
+        event(folder, 'MAINTENANCE logging starting')
         receipt['workbook_log'] = log_workbook(root, settings, folder, receipt)
     except Exception as error:
         receipt.update(workbook_log='pending', workbook_error=str(error))
     (folder / 'receipt.json').write_text(json.dumps(receipt, indent=2))
+    event(folder, f"MAINTENANCE status={receipt['workbook_log']}" + (f" error={receipt['workbook_error']}" if receipt.get('workbook_error') else ''))
     print(f"Deployment verified. Workbook log: {receipt['workbook_log']}. Receipt: {folder / 'receipt.json'}")

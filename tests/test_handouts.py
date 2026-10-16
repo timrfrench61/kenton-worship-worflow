@@ -213,8 +213,8 @@ class HandoutTests(unittest.TestCase):
         regenerated = handouts.verified_word_content(service, {'_handout_source': output}, lambda ref: full)
         self.assertEqual(len(regenerated['words']), 2)
 
-    def test_cli_independent_outputs_multipage_export_and_stale_archive(self):
-        """Run the real entry point against synthetic inputs; only Word is simulated."""
+    def test_cli_skips_manual_studies_and_generates_discussion(self):
+        """Run the real entry point with simulated gathering and Word export."""
         fixture = self.root / 'fixture'
         previous = fixture / 'work/desktop/previous'
         previous.mkdir(parents=True)
@@ -272,44 +272,24 @@ a.gather, a.export_word = gather, export
 ''')
         env = dict(os.environ, FIXTURE_ROOT=str(fixture), PYTHONPATH=os.pathsep.join([str(self.root), str(ROOT / 'src')]))
         command = [sys.executable, str(ROOT / 'scripts/update-automation.py'), '--offline']
-        run = subprocess.run(command, env=env, capture_output=True, text=True)
-        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-        build = json.loads((fixture / 'work/build.json').read_text())
-        self.assertIn('2026-09-27-morning-word-study.pdf', build['files'])
-        self.assertFalse(any('one page' in note for note in build['attention']))
-        self.assertFalse(build['complete'])  # Independent bulletin failures remain visible.
-        self.assertIn('_archive', build['working_files'])
-        self.assertFalse(list((fixture / 'work').glob('.update-*')))
-        env['LOCK_STUDY'] = '1'
-        run = subprocess.run(command, env=env, capture_output=True, text=True)
-        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-        build = json.loads((fixture / 'work/build.json').read_text())
-        self.assertIn('morning handout', build['failed_outputs'])
-        self.assertIn('2026-09-27-evening-discussion.pdf', build['files'])
-        self.assertTrue(any('Close the open review file' in item for item in build['attention']))
-        del env['LOCK_STUDY']
-        env['MISSING_STUDY'] = '1'
-        run = subprocess.run(command, env=env, capture_output=True, text=True)
-        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-        self.assertFalse((fixture / 'work/output/2026-09-27-morning-word-study.pdf').exists())
-        self.assertTrue((fixture / 'work/output/2026-09-27-evening-discussion.pdf').exists())
-        self.assertTrue(list((fixture / 'work/_archive').rglob('2026-09-27-morning-word-study.pdf')))
-        del env['MISSING_STUDY']
-        env['ALL_SUCCESS'] = '1'
-        run = subprocess.run(command, env=env, capture_output=True, text=True)
-        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-        build = json.loads((fixture / 'work/build.json').read_text())
-        self.assertTrue(build['complete'], build['attention'])
-        self.assertIsNone(build['working_files'])
-        self.assertFalse(list((fixture / 'work').glob('.update-*')))
-        self.assertTrue((fixture / 'work/output/2026-09-27-morning-word-study.pdf').exists())
-        env['OVERSIZE_STUDY'] = '1'
-        run = subprocess.run(command, env=env, capture_output=True, text=True)
-        build = json.loads((fixture / 'work/build.json').read_text())
-        self.assertFalse(build['complete'])
-        self.assertIn('morning handout', build['failed_outputs'])
-        self.assertTrue(any('current requirement is one' in note for note in build['attention']))
-        self.assertIn('2026-09-27-evening-discussion.pdf', build['files'])
+        output = fixture / 'work/output'
+        output.mkdir(parents=True)
+        manual = output / '2026-09-20-morning-word-study.pdf'
+        manual.write_bytes(b'manual study to preserve')
+        for flags in ({}, {'MISSING_STUDY': '1'}, {'ALL_SUCCESS': '1'}):
+            with self.subTest(flags=flags):
+                run = subprocess.run(command, env=dict(env, **flags), capture_output=True, text=True)
+                self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+                build = json.loads((fixture / 'work/build.json').read_text())
+                self.assertFalse(any('word-study' in name for name in build['files']))
+                self.assertFalse(any('morning handout' in note for note in build['attention']))
+                self.assertIn('2026-09-27-evening-discussion.pdf', build['files'])
+                self.assertEqual(manual.read_bytes(), b'manual study to preserve')
+                if flags.get('ALL_SUCCESS'):
+                    self.assertTrue(build['complete'], build['attention'])
+                    self.assertIsNone(build['working_files'])
+                    self.assertFalse(list((fixture / 'work').glob('.update-*')))
+
 
 
 if __name__ == '__main__':

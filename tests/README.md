@@ -16,7 +16,7 @@ Run the focused regression suite with the project interpreter:
 .automation-venv/Scripts/python.exe -m unittest discover -s tests -v
 ```
 
-The handout tests use synthetic documents. They check subject matching, unchanged MOV copies, template mapping, untouched package parts, removal of Greek, verified quotation replacement, missing authored fields, ambiguous sources, and the real update script entry point against isolated fixtures. The fixture entry-point test substitutes workbook gathering and Word export; its PDFs are blank two-page test files, not a visual review. It also checks that one failed document does not block the other service and that stale handouts are archived.
+The handout tests use synthetic documents. Standalone mapping tests retain coverage for existing study utilities. The real update entry-point test substitutes workbook gathering and Word export, verifies that manual word studies are skipped and preserved, and confirms that movie discussion handouts still generate. Its blank PDF fixtures do not establish visual review. Weekly update no longer prepares, validates, or generates word studies; these are done by hand.
 
 The publish tests invoke the real command-line script with temporary project and destination folders. They verify new publication, refusal to overwrite without `--force`, full-folder replacement with an archived previous set, recovery after a simulated final-move failure, and enforcement of review, completed-update, and hash checks even with `--force`. No real Drive publication occurs during these tests.
 
@@ -28,7 +28,7 @@ If dependencies change, also test installation from declared dependencies in a c
 
 The NIV reader tests use synthetic source HTML to verify exact text extraction, footnote removal, small-capital rendering, nonconsecutive verse selections, wrong-translation/reference/verse rejection, cache integrity, and offline missing-source behavior. Real word-study validation must separately retrieve NIV source pages. Cleanup tests verify that successful CLI runs remove staging, failed runs archive diagnostics, altered output prevents cleanup, and cleanup refuses paths outside immediate `.update-*` children of `work`.
 
-Word-study excerpt tests reject changed wording, capitalization, partial words, and internal omissions. The CLI fixture simulates a two-page Word study to confirm that the one-page requirement prevents a completed build without blocking the evening handout. Real one-page verification still requires Word export and visual inspection.
+Standalone word-study excerpt tests reject changed wording, capitalization, partial words, and internal omissions. These utilities are retained for existing artifacts; they are outside the weekly workflow.
 
 Single-verse tests verify that old excerpt fields are ignored in favor of the full source verse. Generated Word studies must contain no commentary, Greek, or synthesis and must remain usable as retained templates on a later run.
 

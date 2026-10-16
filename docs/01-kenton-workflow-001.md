@@ -40,6 +40,8 @@ In `recent-logs.xlsx`, the planner's morning and evening `PofC-text` rows supply
 
 ## 2. Build the worship documents
 
+Word studies are prepared by hand outside this automation. Update does not research, generate, or require them. Existing word-study files are preserved.
+
 For October 4, use the communion templates for both services:
 
 ```powershell
@@ -52,7 +54,6 @@ python scripts/update-automation.py --date 2026-10-04 --communion
 | --- | --- |
 | Standard morning/evening bulletin | `work/templates/standard/morning-bulletin.docx` and `evening-bulletin.docx` |
 | Communion morning/evening bulletin | `work/templates/communion/morning-bulletin.docx` and `evening-bulletin.docx` |
-| Sermon word study | `work/templates/word_study_template.docx` |
 | Movie discussion notes (`MOV` in the planner) | `work/templates/discussion_template.docx` |
 
 Update fills these templates without modifying them. Last week's documents in `previous` are reference copies, not the templates used for generation.
@@ -72,7 +73,6 @@ work/output
 It generates:
 
 - bulletins from the named standard or communion Word templates;
-- sermon Word studies using `work/templates/word_study_template.docx`;
 - movie (`MOV`) discussion notes using `work/templates/discussion_template.docx`;
 - praise chord sets in planner song order;
 - the website draft at `work/desktop/worship-highlights.json`.
@@ -115,7 +115,7 @@ Open both services in `work/output`. Check every rendered page before publishing
 6. Website details in `work/desktop/worship-highlights.json`, when applicable.
 7. Communion wording and placement in both bulletins when `--communion` was selected.
 
-Word studies must contain the complete NIV main passage and exact NIV cross-references. Preserve the typography in the current Word template, including its 12-point Scripture text. A Word study exporting to more than one page is not ready to publish. MOV handouts keep their separate two-page format.
+MOV handouts keep their separate two-page format.
 
 Correct planning facts in the workbook or authored material, then rerun steps 1 and 2. Do not publish an output that has not been visually reviewed.
 
@@ -180,15 +180,9 @@ Church content stays under the ignored `work/` directory. The scripts treat Driv
 
 You do not need to interpret or edit the JSON files in DESKTOP. They are working data for the scripts and AI-authored material. For document review, open `work/output`; for a problem, read `work/desktop/needs-attention.txt`. DESKTOP's Word/PDF files are working copies, not a second review set.
 
-Handout templates supply layout. Current teaching content must come from AI/user-authored material or a matching authored study; old example text is never substituted for this week's passage or movie. The word-study PDF is a visual reference; generation uses the DOCX.
+Discussion templates supply layout. Current movie discussion content must come from AI/user-authored material or a matching authored discussion; old example text is never substituted.
 
-Update also reads the most recently ranked research JSON under `work/research` whose filename starts with the selected Sunday and whose passage and ordered study words match the planner. It uses that ranked source when there is no explicit current `handout_content`. Unranked searches and previous dates are not substituted. API.Bible verse text is checked against its retained full-verse source cache before template mapping. The complete main passage is verified separately.
-
-The current selection is three full verses per Testament per word, with the remaining three references under `See also...`. The current Word template controls fonts and sizes, including the user-approved 12-point Scripture lines. See `work/templates/GENERATION-PLAN.md` for the mapping and validation contract. Older 13/14-point overrides and the one-verse selection are superseded.
-
-The updated Word template has a separate third table row for `See also...`, which update fills using that row's retained formatting. Existing two-row templates remain supported. The current DOCX is read fresh on every update; template edits do not require a new research or Gemini run.
-
-To rebuild existing documents, run `python scripts/update-automation.py --communion --force`. Update always rebuilds; this flag makes the intent explicit. It does not rerun Gemini or bypass the one-page check. To refresh research and ranking first, use the commands in the README's NIV research section. Put `--force` on the same command line, never on a separate PowerShell line.
+To rebuild existing documents, run `python scripts/update-automation.py --communion --force`; omit `--communion` for standard services. Put `--force` on the same command line.
 
 ## If a command stops
 
@@ -198,5 +192,3 @@ To rebuild existing documents, run `python scripts/update-automation.py --commun
 - If Word cannot export PDFs, run the command from the normal VS Code terminal with Microsoft Word available.
 - If the Drive week-set already exists, review the replacement and use `--force` only when replacement is intended.
 - If Drive is unavailable, stop; do not publish to a local substitute.
-
-Current word-count rule: three study words print three full verses per Testament per word; four study words print two. Remaining ranked references use the See also row. Configure `word_study.handout_full_verses_by_word_count` in `application.json`; see `work/templates/GENERATION-PLAN.md`.

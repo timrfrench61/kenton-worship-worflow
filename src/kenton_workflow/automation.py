@@ -772,26 +772,11 @@ def gather(root, day, offline, chords):
             e['call_lines'] = attempt('call to worship', lambda: bible_reading(s['call_to_worship'], p['desktop'] / 'scripture-cache', offline))
         sources = imported.get('planning_sources', [])
         worship = Path(sources[0]).parent if sources else PLANNING_ROOT
-        if s['kind'] == 'word-study' and not e.get('handout_content'):
-            from .study_research import load_ranked
-            research = attempt('ranked study research', lambda: load_ranked(root, day, s))
-            if research:
-                research_path, e['handout_content'], e['_research_niv'] = research
-                log(root, f'Reading ranked study research: "{research_path}"')
-        e['_handout_source'] = attempt('handout', lambda: handouts.prepare_named(
-            s, e, Path(record['templates']), [worship / '_Handouts']))
-        if e['_handout_source']:
-            log(root, f'Reading authored handout/template: "{e["_handout_source"]}"')
-            if s['kind'] == 'word-study':
-                def lookup_niv(ref):
-                    cached = e.get('_research_niv', {}).get(handouts.reference(ref))
-                    if cached:
-                        log(root, f'Exact NIV word-study reference: {ref} (verified API.Bible research source)')
-                        return cached
-                    log(root, f'Exact NIV word-study reference: {ref} (Bible Gateway source HTML)')
-                    return exact_niv_reading(ref, p['desktop'] / 'scripture-cache/word-study-niv', offline)
-                e['_verified_word_content'] = attempt('exact NIV word study', lambda:
-                    handouts.verified_word_content(s, e, lookup_niv))
+        if s['kind'] == 'discussion':
+            e['_handout_source'] = attempt('handout', lambda: handouts.prepare_named(
+                s, e, Path(record['templates']), [worship / '_Handouts']))
+            if e['_handout_source']:
+                log(root, f'Reading authored discussion/template: "{e["_handout_source"]}"')
         e['chords'] = []
         for song in s['praise_songs'] if chord_folders else []:
             file = attempt(f'chords for {song}', lambda song=song: chord_file(song, chord_folders, e.get('chord_files', {}).get(song)))
@@ -852,7 +837,7 @@ def archive_older_generated(root, day):
         if not folder.exists():
             continue
         for path in folder.iterdir():
-            match = re.fullmatch(r'(\d{4}-\d{2}-\d{2})-(morning|evening)-(bulletin|word-study|discussion|chords-index|praise-chords)\.(docx|pdf)', path.name)
+            match = re.fullmatch(r'(\d{4}-\d{2}-\d{2})-(morning|evening)-(bulletin|discussion|chords-index|praise-chords)\.(docx|pdf)', path.name)
             if match and match[1] != day and path.is_file():
                 target = checked_path(archive / name / path.name)
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -918,7 +903,7 @@ def update_automation(root, day, check=False, offline=False, chords=None, bullet
                 service_name = stem.removesuffix('-handout')
                 archive = Path(root) / 'work/_archive/handouts' / stage.name
                 for parent in (output, p['desktop']):
-                    for kind in ('word-study', 'discussion'):
+                    for kind in ('discussion',):
                         for suffix in ('.docx', '.pdf'):
                             old = parent / f'{day}-{service_name}-{kind}{suffix}'
                             if old.exists():
@@ -1002,11 +987,9 @@ def update_automation(root, day, check=False, offline=False, chords=None, bullet
             target = folder / f'{day}-{name}-{s["kind"]}.docx'
             handout(s, e, day, target)
             pdf = export_word(target)
-            if s['kind'] == 'word-study' and len(PdfReader(pdf).pages) != 1:
-                raise ValueError(f'Word study exported to {len(PdfReader(pdf).pages)} pages; the current requirement is one. '
-                                 'Draft retained with the template formatting and selected verses unchanged. '
-                                 'Review work/templates/GENERATION-PLAN.md and adjust the template or explicitly revise the page requirement.')
-        attempt(f'{name} handout', f'{name}-handout', make_handout)
+        if s['kind'] == 'discussion':
+            attempt(f'{name} handout', f'{name}-handout', make_handout)
+
 
         def make_chords(folder):
             if not s['praise_songs'] or len(e.get('chords', [])) != len(s['praise_songs']):

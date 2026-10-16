@@ -14,6 +14,41 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class DeploymentTests(unittest.TestCase):
+    def test_cli_requires_release_and_review(self):
+        for args in [('--deploy',), ('--deploy', '--reviewed'), ('--deploy', '--release', 'example'), ('--check', '--release', 'example')]:
+            result = subprocess.run([sys.executable, str(ROOT/'scripts/deploy-website.py'), *args], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn('error:', result.stderr)
+
+    def test_cli_resolves_release_id_without_network(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root/'scripts').mkdir()
+            shutil.copy2(ROOT/'scripts/deploy-website.py', root/'scripts/deploy-website.py')
+            (root/'scripts/_website_release.py').write_text('def prepare(*args): pass\ndef log_workbook(*args): pass\ndef deploy(root, config, folder, reviewed):\n print("SELECTED", folder.resolve(), reviewed)\n')
+            (root/'site.csproj').touch()
+            (root/'website.json').write_text(json.dumps({'project': str(root), 'deployment': {'project_file': 'site.csproj', 'history_directory': 'work/website-deploy'}}))
+            result = subprocess.run([sys.executable, str(root/'scripts/deploy-website.py'), '--deploy', '--reviewed', '--release', 'example'], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn(str((root/'work/website-deploy/example').resolve()), result.stdout)
+            self.assertIn('True', result.stdout)
+            command = [sys.executable, str(root/'scripts/deploy-website.py'), '--deploy', '--reviewed', '--release']
+            result = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn('No prepared release', result.stdout)
+            for name in ['20261002T035400036236Z', '20261003T035400036236Z']:
+                folder = root/'work/website-deploy'/name
+                folder.mkdir(parents=True)
+                (folder/'release.json').write_text('{}')
+            result = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn(str(folder.resolve()), result.stdout)
+            (folder/'receipt.json').write_text('{}')
+            result = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn('already attempted', result.stdout)
+            self.assertNotIn('SELECTED', result.stdout)
+
     def test_workbook_log_is_idempotent_and_preserves_planning(self):
         sys.path.insert(0, str(ROOT/'scripts'))
         from _website_release import log_workbook
